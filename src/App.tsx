@@ -1,0 +1,174 @@
+import { useState } from 'react';
+import { Navbar } from './components/Navbar';
+import { Footer } from './components/Footer';
+import { HomePage } from './components/HomePage';
+import { LoginPage } from './components/LoginPage';
+import { ProductListingPage } from './components/ProductListingPage';
+import { ProductDetailsPage } from './components/ProductDetailsPage';
+import { CartPage } from './components/CartPage';
+import { CheckoutPage } from './components/CheckoutPage';
+import { SellerDashboard } from './components/SellerDashboard';
+import { SellerProfilePage } from './components/SellerProfilePage';
+import { ReviewPage } from './components/ReviewPage';
+import { StyleGuide } from './components/StyleGuide';
+import { Product } from './lib/mockData';
+import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner@2.0.3';
+
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
+  sellerName: string;
+  quantity: number;
+  stock: number;
+}
+
+export default function App() {
+  const [currentPage, setCurrentPage] = useState('home');
+  const [selectedProductId, setSelectedProductId] = useState<string | undefined>();
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  const handleNavigate = (page: string, productId?: string) => {
+    setCurrentPage(page);
+    setSelectedProductId(productId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAddToCart = (product: Product, quantity: number = 1) => {
+    const existingItem = cartItems.find(item => item.id === product.id);
+    
+    if (existingItem) {
+      setCartItems(cartItems.map(item =>
+        item.id === product.id
+          ? { ...item, quantity: Math.min(item.quantity + quantity, product.stock) }
+          : item
+      ));
+      toast.success(`Updated ${product.name} quantity in cart`);
+    } else {
+      setCartItems([...cartItems, {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image,
+        sellerName: product.sellerName,
+        quantity: quantity,
+        stock: product.stock
+      }]);
+      toast.success(`Added ${product.name} to cart`);
+    }
+  };
+
+  const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
+    setCartItems(cartItems.map(item =>
+      item.id === itemId
+        ? { ...item, quantity: newQuantity }
+        : item
+    ));
+  };
+
+  const handleRemoveItem = (itemId: string) => {
+    const item = cartItems.find(i => i.id === itemId);
+    setCartItems(cartItems.filter(item => item.id !== itemId));
+    if (item) {
+      toast.success(`Removed ${item.name} from cart`);
+    }
+  };
+
+  const cartTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0) + (cartItems.length > 0 ? 3.50 : 0);
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'home':
+        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />;
+      
+      case 'login':
+        return <LoginPage onNavigate={handleNavigate} />;
+      
+      case 'products':
+        return (
+          <ProductListingPage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart}
+          />
+        );
+      
+      case 'product-details':
+        return (
+          <ProductDetailsPage 
+            productId={selectedProductId}
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+          />
+        );
+      
+      case 'cart':
+        return (
+          <CartPage 
+            cartItems={cartItems}
+            onNavigate={handleNavigate}
+            onUpdateQuantity={handleUpdateQuantity}
+            onRemoveItem={handleRemoveItem}
+          />
+        );
+      
+      case 'checkout':
+        return (
+          <CheckoutPage 
+            cartItems={cartItems}
+            cartTotal={cartTotal}
+            onNavigate={handleNavigate}
+          />
+        );
+      
+      case 'seller-dashboard':
+        return <SellerDashboard onNavigate={handleNavigate} />;
+      
+      case 'seller-profile':
+        return (
+          <SellerProfilePage 
+            sellerId={selectedProductId}
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+          />
+        );
+      
+      case 'reviews':
+        return <ReviewPage onNavigate={handleNavigate} />;
+      
+      case 'style-guide':
+        return <StyleGuide />;
+      
+      default:
+        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar 
+        onNavigate={handleNavigate}
+        currentPage={currentPage}
+        cartItemCount={cartItems.length}
+      />
+      
+      <main>
+        {renderPage()}
+      </main>
+
+      <Footer />
+      
+      <Toaster 
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: '#666666',
+            color: '#fff',
+            border: 'none'
+          }
+        }}
+      />
+    </div>
+  );
+}
