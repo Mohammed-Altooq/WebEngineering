@@ -64,14 +64,14 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
     : 'Category';
 
   return (
-    <Card className="flex flex-col overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+    <Card className="flex flex-col overflow-hidden hover:shadow-md transition-shadow cursor-pointer h-80">
       <div onClick={onClick}>
         {/* Image */}
         {product.image ? (
           <img
             src={product.image}
             alt={product.name}
-            className="h-40 w-full object-cover"
+            className="w-full max-h-40 object-cover"
           />
         ) : (
           <div className="h-40 w-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
