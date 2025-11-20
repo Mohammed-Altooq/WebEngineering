@@ -6,10 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Card } from './ui/card';
 import { ProductCard } from './ProductCard';
 
-// ---- API base (change if needed) ----
+// ---- API base ----
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
-// If you already have this type somewhere, delete this and import that instead.
 export interface Product {
   id: string;
   name: string;
@@ -24,17 +23,26 @@ export interface Product {
 }
 
 interface ProductListingPageProps {
-  onNavigate: (page: string, productId?: string) => void;
+  onNavigate: (page: string, productIdOrCategory?: string) => void;
   onAddToCart: (product: Product) => void;
+  /** Optional category coming from the HomePage (when user clicks a category card) */
+  initialCategory?: string;
 }
 
-export function ProductListingPage({ onNavigate, onAddToCart }: ProductListingPageProps) {
+export function ProductListingPage({
+  onNavigate,
+  onAddToCart,
+  initialCategory = 'all',
+}: ProductListingPageProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  // seed the filter with the category coming from HomePage
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    initialCategory || 'all'
+  );
   const [sortBy, setSortBy] = useState<string>('default');
 
   // ---------------------------
@@ -82,7 +90,9 @@ export function ProductListingPage({ onNavigate, onAddToCart }: ProductListingPa
     });
 
   // Collect categories dynamically from products
-  const categories = Array.from(new Set(products.map((p) => p.category))).filter(Boolean);
+  const categories = Array.from(
+    new Set(products.map((p) => p.category))
+  ).filter(Boolean);
 
   // ---------------------------
   // Render

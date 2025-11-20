@@ -7,6 +7,7 @@ import { products } from '../lib/mockData';
 import { ProductCard } from './ProductCard';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { motion } from 'framer-motion';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 interface HomePageProps {
@@ -14,9 +15,19 @@ interface HomePageProps {
   onAddToCart: (product: any) => void;
 }
 
-export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
-    const [sellerCount, setSellerCount] = useState<number | null>(null);
+type CategoryIcon = typeof Leaf;
 
+interface CategoryInfo {
+  name: string;
+  icon: CategoryIcon;
+  color: string;
+}
+
+export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
+  const [sellerCount, setSellerCount] = useState<number | null>(null);
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
+
+  // --- Load sellers for the "150+ Local Sellers" card ---
   useEffect(() => {
     async function loadSellers() {
       try {
@@ -26,7 +37,6 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
           return;
         }
         const data = await res.json();
-        // data should be an array of sellers
         setSellerCount(Array.isArray(data) ? data.length : 0);
       } catch (err) {
         console.error('Error loading sellers:', err);
@@ -36,6 +46,68 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
     loadSellers();
   }, []);
 
+  // --- Load products and derive categories dynamically from DB ---
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/products`);
+        if (!res.ok) {
+          console.error('Failed to fetch products for categories', res.status);
+          return;
+        }
+        const data: { category?: string }[] = await res.json();
+
+        const uniqueNames = Array.from(
+          new Set(
+            data
+              .map((p) => p.category)
+              .filter((c): c is string => Boolean(c && c.trim()))
+          )
+        );
+
+        // Map known category names to icons/colors, default for unknown ones
+        const iconMap: Record<
+          string,
+          {
+            icon: CategoryIcon;
+            color: string;
+          }
+        > = {
+          'Fresh Produce': { icon: Leaf, color: 'bg-olive-green' },
+          Vegetables: { icon: Leaf, color: 'bg-olive-green' },
+
+          'Handmade Crafts': { icon: Package, color: 'bg-deep-terracotta' },
+
+          'Dairy Products': { icon: Package, color: 'bg-primary' },
+          'Dairy & Eggs': { icon: Package, color: 'bg-primary' },
+
+          'Honey & Preserves': { icon: Award, color: 'bg-golden-harvest' },
+          Honey: { icon: Award, color: 'bg-golden-harvest' },
+
+          'Home & Kitchen': { icon: Award, color: 'bg-golden-harvest' },
+        };
+
+        const mapped: CategoryInfo[] = uniqueNames.map((name) => {
+          const match = iconMap[name] ?? {
+            icon: Package,
+            color: 'bg-primary',
+          };
+          return {
+            name,
+            icon: match.icon,
+            color: match.color,
+          };
+        });
+
+        setCategories(mapped);
+      } catch (err) {
+        console.error('Error loading categories from products:', err);
+      }
+    }
+
+    loadCategories();
+  }, []);
+
   const featuredProducts = products.slice(0, 3);
 
   return (
@@ -43,47 +115,47 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream py-20 px-4 overflow-hidden">
         {/* Animated background elements */}
-        <motion.div 
+        <motion.div
           className="absolute top-20 right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl"
-          animate={{ 
+          animate={{
             scale: [1, 1.2, 1],
-            opacity: [0.3, 0.5, 0.3]
+            opacity: [0.3, 0.5, 0.3],
           }}
-          transition={{ 
+          transition={{
             duration: 8,
             repeat: Infinity,
-            ease: "easeInOut"
+            ease: 'easeInOut',
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute bottom-20 left-20 w-96 h-96 bg-golden-harvest/5 rounded-full blur-3xl"
-          animate={{ 
+          animate={{
             scale: [1, 1.3, 1],
-            opacity: [0.2, 0.4, 0.2]
+            opacity: [0.2, 0.4, 0.2],
           }}
-          transition={{ 
+          transition={{
             duration: 10,
             repeat: Infinity,
-            ease: "easeInOut"
+            ease: 'easeInOut',
           }}
         />
-        
+
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid md:grid-cols-2 gap-12 items-center">
-            <motion.div 
+            <motion.div
               className="space-y-6"
               initial={{ opacity: 0, x: -50 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
             >
-              <motion.h1 
+              <motion.h1
                 className="font-['Poppins'] text-4xl md:text-5xl lg:text-6xl text-foreground leading-tight"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
               >
                 Support Local
-                <motion.span 
+                <motion.span
                   className="block text-primary"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -92,18 +164,19 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                   Farmers & Artisans
                 </motion.span>
               </motion.h1>
-              <motion.p 
+              <motion.p
                 className="text-lg text-foreground/70 max-w-xl"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.6 }}
               >
-                Discover fresh, handmade, and sustainable products from your local community in Bahrain. 
-                Every purchase supports local businesses and traditional craftsmanship.
+                Discover fresh, handmade, and sustainable products from your local
+                community in Bahrain. Every purchase supports local businesses and
+                traditional craftsmanship.
               </motion.p>
-              
+
               {/* Search Bar */}
-              <motion.div 
+              <motion.div
                 className="flex gap-2 max-w-lg"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -111,16 +184,13 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
               >
                 <div className="flex-1 relative group">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                  <Input 
-                    placeholder="Search for products..." 
+                  <Input
+                    placeholder="Search for products..."
                     className="pl-10 h-12 bg-white border-border transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Button 
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
                     className="h-12 px-6 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
                     onClick={() => onNavigate('products')}
                   >
@@ -129,7 +199,7 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                 </motion.div>
               </motion.div>
 
-              <motion.div 
+              <motion.div
                 className="flex gap-4"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -139,8 +209,8 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                   whileHover={{ scale: 1.05, y: -2 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Button 
-                    size="lg" 
+                  <Button
+                    size="lg"
                     className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30 transition-all"
                     onClick={() => onNavigate('products')}
                   >
@@ -152,8 +222,8 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                   whileHover={{ scale: 1.05, y: -2 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Button 
-                    size="lg" 
+                  <Button
+                    size="lg"
                     variant="outline"
                     className="hover:bg-primary/5 transition-all"
                     onClick={() => onNavigate('login')}
@@ -164,13 +234,13 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
               </motion.div>
             </motion.div>
 
-            <motion.div 
+            <motion.div
               className="relative"
               initial={{ opacity: 0, x: 50 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
             >
-              <motion.div 
+              <motion.div
                 className="relative rounded-2xl overflow-hidden shadow-2xl"
                 whileHover={{ scale: 1.02 }}
                 transition={{ duration: 0.3 }}
@@ -182,23 +252,23 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                 />
               </motion.div>
               {/* Floating Stats */}
-              <motion.div 
+              <motion.div
                 className="absolute -bottom-6 -left-6 bg-white rounded-xl shadow-lg p-4 border border-border"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 1.2 }}
-                whileHover={{ y: -4, shadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)" }}
+                whileHover={{ y: -4, shadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}
               >
                 <div className="flex items-center space-x-3">
-                  <motion.div 
+                  <motion.div
                     className="bg-primary/10 p-3 rounded-lg"
                     animate={{ rotate: [0, 5, 0, -5, 0] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                   >
                     <Users className="w-6 h-6 text-primary" />
                   </motion.div>
                   <div>
-                    <motion.p 
+                    <motion.p
                       className="font-['Roboto_Mono'] text-2xl text-primary"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -215,10 +285,10 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
         </div>
       </section>
 
-      {/* Categories */}
+      {/* Categories - now driven by DB categories */}
       <section className="py-16 px-4">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -226,40 +296,49 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
             transition={{ duration: 0.6 }}
           >
             <h2 className="font-['Poppins'] text-3xl mb-4">Shop by Category</h2>
-            <p className="text-foreground/70">Explore our curated selection of local products</p>
+            <p className="text-foreground/70">
+              Explore our curated selection of local products
+            </p>
           </motion.div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {[
-              { name: 'Fresh Produce', icon: Leaf, color: 'bg-olive-green' },
-              { name: 'Handmade Crafts', icon: Package, color: 'bg-deep-terracotta' },
-              { name: 'Honey & Preserves', icon: Award, color: 'bg-golden-harvest' },
-              { name: 'Dairy Products', icon: Package, color: 'bg-primary' }
-            ].map((category, index) => (
-              <motion.div
-                key={category.name}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                whileHover={{ y: -8, scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Card 
-                  className="p-6 text-center hover:shadow-xl transition-all cursor-pointer group border border-border bg-white"
-                  onClick={() => onNavigate('products')}
+            {(categories.length > 0
+              ? categories
+              : [
+                  // fallback while loading / if no categories found
+                  { name: 'Fresh Produce', icon: Leaf, color: 'bg-olive-green' },
+                  { name: 'Handmade Crafts', icon: Package, color: 'bg-deep-terracotta' },
+                  { name: 'Dairy Products', icon: Package, color: 'bg-primary' },
+                  { name: 'Honey & Preserves', icon: Award, color: 'bg-golden-harvest' },
+                ]
+            ).map((category, index) => {
+              const Icon = category.icon;
+              return (
+                <motion.div
+                  key={category.name}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  whileHover={{ y: -8, scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
-                  <motion.div 
-                    className={`${category.color} w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4`}
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.6, ease: "easeInOut" }}
+                  <Card
+                    className="p-6 text-center hover:shadow-xl transition-all cursor-pointer group border border-border bg-white"
+                    onClick={() => onNavigate('products', category.name)}
                   >
-                    <category.icon className="w-8 h-8 text-white" />
-                  </motion.div>
-                  <h3 className="font-['Lato']">{category.name}</h3>
-                </Card>
-              </motion.div>
-            ))}
+                    <motion.div
+                      className={`${category.color} w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4`}
+                      whileHover={{ rotate: 360, scale: 1.1 }}
+                      transition={{ duration: 0.6, ease: 'easeInOut' }}
+                    >
+                      <Icon className="w-8 h-8 text-white" />
+                    </motion.div>
+                    <h3 className="font-['Lato']">{category.name}</h3>
+                  </Card>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -267,7 +346,7 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
       {/* Featured Products */}
       <section className="py-16 px-4 bg-soft-cream">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             className="flex justify-between items-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -276,13 +355,12 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
           >
             <div>
               <h2 className="font-['Poppins'] text-3xl mb-2">Featured Products</h2>
-              <p className="text-foreground/70">Handpicked selections from our best sellers</p>
+              <p className="text-foreground/70">
+                Handpicked selections from our best sellers
+              </p>
             </div>
-            <motion.div
-              whileHover={{ scale: 1.05, x: 5 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button 
+            <motion.div whileHover={{ scale: 1.05, x: 5 }} whileTap={{ scale: 0.95 }}>
+              <Button
                 variant="outline"
                 onClick={() => onNavigate('products')}
                 className="hover:bg-primary/5 transition-all"
@@ -304,9 +382,12 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
               >
                 <ProductCard
                   product={product}
-                  onViewDetails={(id) => onNavigate('product-details', id)}
+                  // keep your existing callbacks here
+                  onViewDetails={(id: string) => onNavigate('product-details', id)}
                   onAddToCart={onAddToCart}
-                  onViewSeller={(sellerId) => onNavigate('seller-profile', sellerId)}
+                  onViewSeller={(sellerId: string) =>
+                    onNavigate('seller-profile', sellerId)
+                  }
                 />
               </motion.div>
             ))}
@@ -317,7 +398,7 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
       {/* How It Works */}
       <section className="py-16 px-4">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -333,21 +414,24 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
               {
                 step: '01',
                 title: 'Browse Products',
-                description: 'Explore our marketplace filled with fresh produce and handmade crafts from local sellers.',
-                icon: Search
+                description:
+                  'Explore our marketplace filled with fresh produce and handmade crafts from local sellers.',
+                icon: Search,
               },
               {
                 step: '02',
                 title: 'Add to Cart',
-                description: 'Select your favorite items and add them to your cart. Shop from multiple sellers.',
-                icon: Package
+                description:
+                  'Select your favorite items and add them to your cart. Shop from multiple sellers.',
+                icon: Package,
               },
               {
                 step: '03',
                 title: 'Support Local',
-                description: 'Complete your order and support local farmers and artisans in your community.',
-                icon: Award
-              }
+                description:
+                  'Complete your order and support local farmers and artisans in your community.',
+                icon: Award,
+              },
             ].map((item, index) => (
               <motion.div
                 key={item.step}
@@ -358,14 +442,16 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                 whileHover={{ y: -8, scale: 1.02 }}
               >
                 <Card className="p-8 text-center border border-border bg-white hover:shadow-xl transition-all">
-                  <motion.div 
+                  <motion.div
                     className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
                     whileHover={{ rotate: 360 }}
                     transition={{ duration: 0.6 }}
                   >
                     <item.icon className="w-8 h-8 text-primary" />
                   </motion.div>
-                  <div className="text-primary font-['Roboto_Mono'] mb-2">{item.step}</div>
+                  <div className="text-primary font-['Roboto_Mono'] mb-2">
+                    {item.step}
+                  </div>
                   <h3 className="font-['Lato'] mb-3">{item.title}</h3>
                   <p className="text-sm text-foreground/70">{item.description}</p>
                 </Card>
@@ -378,7 +464,7 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
       {/* Testimonials */}
       <section className="py-16 px-4 bg-gradient-to-br from-primary/5 to-soft-cream">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -394,21 +480,24 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
               {
                 name: 'Sara Al-Khalifa',
                 role: 'Regular Customer',
-                content: 'The quality of produce is exceptional! I love knowing exactly where my food comes from.',
-                rating: 5
+                content:
+                  'The quality of produce is exceptional! I love knowing exactly where my food comes from.',
+                rating: 5,
               },
               {
                 name: 'Ahmed Abdullah',
                 role: 'Artisan Supporter',
-                content: 'Supporting local artisans has never been easier. Beautiful handmade products delivered to my door.',
-                rating: 5
+                content:
+                  'Supporting local artisans has never been easier. Beautiful handmade products delivered to my door.',
+                rating: 5,
               },
               {
                 name: 'Fatima Hassan',
                 role: 'Community Member',
-                content: 'This platform has connected me with amazing local businesses I never knew existed in Bahrain.',
-                rating: 5
-              }
+                content:
+                  'This platform has connected me with amazing local businesses I never knew existed in Bahrain.',
+                rating: 5,
+              },
             ].map((testimonial, index) => (
               <motion.div
                 key={index}
@@ -437,7 +526,9 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                   </div>
                   <div>
                     <p className="font-['Lato']">{testimonial.name}</p>
-                    <p className="text-sm text-muted-foreground">{testimonial.role}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {testimonial.role}
+                    </p>
                   </div>
                 </Card>
               </motion.div>
@@ -457,16 +548,19 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
             whileHover={{ scale: 1.02 }}
           >
             <Card className="bg-gradient-to-r from-primary to-olive-green text-white p-12 text-center border-0 shadow-2xl shadow-primary/20">
-              <h2 className="font-['Poppins'] text-3xl mb-4">Ready to Start Selling?</h2>
+              <h2 className="font-['Poppins'] text-3xl mb-4">
+                Ready to Start Selling?
+              </h2>
               <p className="mb-8 text-white/90 max-w-2xl mx-auto">
-                Join our community of local farmers and artisans. Share your products with customers who value quality and sustainability.
+                Join our community of local farmers and artisans. Share your
+                products with customers who value quality and sustainability.
               </p>
               <motion.div
                 whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className="bg-white text-primary hover:bg-white/90 shadow-lg"
                   onClick={() => onNavigate('login')}
                 >

@@ -29,12 +29,28 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
 
-  const handleNavigate = (page: string, productId?: string) => {
-    setCurrentPage(page);
-    setSelectedProductId(productId);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const handleNavigate = (page: string, idOrCategory?: string) => {
+  setCurrentPage(page);
+
+  // used for product details & seller profile
+  if (page === 'product-details' || page === 'seller-profile') {
+    setSelectedProductId(idOrCategory);
+  } else {
+    setSelectedProductId(undefined);
+  }
+
+  // used for marketplace filter
+  if (page === 'products') {
+    setSelectedCategory(idOrCategory); // can be undefined (means "all")
+  } else {
+    setSelectedCategory(undefined);
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 
   const handleAddToCart = (product: Product, quantity: number = 1) => {
     const existingItem = cartItems.find(item => item.id === product.id);
@@ -87,12 +103,14 @@ export default function App() {
         return <LoginPage onNavigate={handleNavigate} />;
       
       case 'products':
-        return (
-          <ProductListingPage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart}
-          />
-        );
+  return (
+    <ProductListingPage
+      onNavigate={handleNavigate}
+      onAddToCart={handleAddToCart}
+      initialCategory={selectedCategory}
+    />
+  );
+
       
       case 'product-details':
   return selectedProductId ? (
