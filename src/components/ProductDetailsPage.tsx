@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Star, Share2, Heart } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import type { Product } from '../lib/mockData'; // keep using this type for now
+import type { Product } from '../lib/mockData';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -38,16 +38,14 @@ export function ProductDetailsPage({
         setLoading(true);
         setError(null);
 
-        // 1) product
+        // Fetch product
         const prodRes = await fetch(`${API_BASE_URL}/api/products/${productId}`);
         if (!prodRes.ok) throw new Error('Failed to load product');
         const prodData: Product = await prodRes.json();
         setProduct(prodData);
 
-        // 2) reviews
-        const reviewsRes = await fetch(
-          `${API_BASE_URL}/api/products/${productId}/reviews`
-        );
+        // Fetch reviews
+        const reviewsRes = await fetch(`${API_BASE_URL}/api/products/${productId}/reviews`);
         if (reviewsRes.ok) {
           const reviewsData: Review[] = await reviewsRes.json();
           setReviews(reviewsData);
@@ -78,6 +76,7 @@ export function ProductDetailsPage({
 
   const reviewCount = reviews.length;
 
+  // Loading state
   if (loading) {
     return (
       <div className="px-6 py-4">
@@ -90,6 +89,7 @@ export function ProductDetailsPage({
     );
   }
 
+  // Error / Not Found
   if (error || !product) {
     return (
       <div className="px-6 py-4">
@@ -106,7 +106,7 @@ export function ProductDetailsPage({
 
   return (
     <div className="px-6 py-4 flex flex-col gap-6">
-      {/* Back link */}
+      {/* Back */}
       <Button variant="ghost" onClick={handleBack} className="w-fit">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Marketplace
@@ -128,16 +128,18 @@ export function ProductDetailsPage({
           )}
         </Card>
 
-        {/* Right side: details */}
+        {/* Details */}
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 mb-2">
                 {product.category || 'Product'}
               </div>
+
               <h1 className="text-2xl font-semibold mb-1">
                 {product.name}
               </h1>
+
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Star className="h-4 w-4 fill-current text-yellow-500" />
                 <span>{avgRating.toFixed(1)}</span>
@@ -155,6 +157,7 @@ export function ProductDetailsPage({
             </div>
           </div>
 
+          {/* Price */}
           <div className="text-2xl font-bold">
             {product.price.toFixed(2)} BHD
             <span className="text-sm font-normal text-muted-foreground ml-1">
@@ -162,12 +165,18 @@ export function ProductDetailsPage({
             </span>
           </div>
 
+          {/* Description */}
           <p className="text-sm text-muted-foreground">
             {product.description || 'No description provided for this product.'}
           </p>
 
+          {/* Stock */}
           <div className="text-sm text-emerald-700 font-medium">
-            • In Stock
+            {typeof product.stock === 'number'
+              ? product.stock > 0
+                ? `• In stock: ${product.stock} available`
+                : '• Out of stock'
+              : '• In stock'}
           </div>
 
           {/* Quantity + Add to Cart */}
@@ -176,19 +185,21 @@ export function ProductDetailsPage({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() =>
-                  setQuantity((q) => Math.max(1, q - 1))
-                }
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
               >
                 −
               </Button>
+
               <div className="px-4 py-2 text-sm">{quantity}</div>
+
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() =>
                   setQuantity((q) =>
-                    product.stock ? Math.min(product.stock, q + 1) : q + 1
+                    product.stock
+                      ? Math.min(product.stock, q + 1)
+                      : q + 1
                   )
                 }
               >
@@ -209,6 +220,7 @@ export function ProductDetailsPage({
       {/* Reviews */}
       <Card className="p-6">
         <h2 className="font-semibold mb-4">Customer Reviews</h2>
+
         {reviews.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No reviews yet for this product.
@@ -216,20 +228,20 @@ export function ProductDetailsPage({
         ) : (
           <div className="space-y-4">
             {reviews.map((r) => (
-              <div
-                key={r.id}
-                className="border-b pb-3 last:border-b-0 last:pb-0"
-              >
+              <div key={r.id} className="border-b pb-3 last:border-b-0 last:pb-0">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">{r.customerName}</span>
+
                   <span className="flex items-center gap-1">
                     <Star className="h-3 w-3 fill-current text-yellow-500" />
                     {r.rating.toFixed(1)}
                   </span>
                 </div>
+
                 <div className="text-xs text-muted-foreground mb-1">
                   {r.date}
                 </div>
+
                 <p className="text-sm">{r.comment}</p>
               </div>
             ))}

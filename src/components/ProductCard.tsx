@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { Star } from 'lucide-react';
 import { Card, CardContent, CardFooter } from './ui/card';
 import { Button } from './ui/button';
-import type { Product } from '../components/ProductListingPage'; // adjust import if needed
+import type { Product } from '../components/ProductListingPage'; // uses the Product type from the listing page
 
-// Same pattern as ProductListingPage
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 interface ProductCardProps {
@@ -81,6 +80,14 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
           <div className="text-base font-semibold">
             {product.price.toFixed(2)} BHD
           </div>
+
+          {typeof product.stock === 'number' && (
+            <div className="text-xs text-muted-foreground">
+              {product.stock > 0
+                ? `${product.stock} in stock`
+                : 'Out of stock'}
+            </div>
+          )}
         </CardContent>
       </div>
 
