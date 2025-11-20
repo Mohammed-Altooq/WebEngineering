@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Search, Leaf, Package, Award, Users, ArrowRight, Star, Quote } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,6 +7,7 @@ import { products } from '../lib/mockData';
 import { ProductCard } from './ProductCard';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { motion } from 'framer-motion';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 interface HomePageProps {
   onNavigate: (page: string, productId?: string) => void;
@@ -13,6 +15,27 @@ interface HomePageProps {
 }
 
 export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
+    const [sellerCount, setSellerCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function loadSellers() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/sellers`);
+        if (!res.ok) {
+          console.error('Failed to fetch sellers', res.status);
+          return;
+        }
+        const data = await res.json();
+        // data should be an array of sellers
+        setSellerCount(Array.isArray(data) ? data.length : 0);
+      } catch (err) {
+        console.error('Error loading sellers:', err);
+      }
+    }
+
+    loadSellers();
+  }, []);
+
   const featuredProducts = products.slice(0, 3);
 
   return (
@@ -181,7 +204,7 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                       animate={{ opacity: 1 }}
                       transition={{ duration: 1, delay: 1.4 }}
                     >
-                      150+
+                      {sellerCount !== null ? `${sellerCount}+` : '150+'}
                     </motion.p>
                     <p className="text-sm text-muted-foreground">Local Sellers</p>
                   </div>
