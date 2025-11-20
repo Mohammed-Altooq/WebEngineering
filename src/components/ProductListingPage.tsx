@@ -98,7 +98,7 @@ export function ProductListingPage({
   // Render
   // ---------------------------
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 max-w-6xl mx-auto">
       {/* Header + search/filter bar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">

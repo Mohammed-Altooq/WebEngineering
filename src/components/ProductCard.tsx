@@ -16,32 +16,29 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
   const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [avgRating, setAvgRating] = useState<number | null>(null);
 
+  // 👇 You only edit this number to make the card taller/shorter
+  const IMAGE_HEIGHT = "430px";
+
   useEffect(() => {
     async function loadReviews() {
       try {
         const res = await fetch(
           `${API_BASE_URL}/api/products/${product.id}/reviews`
         );
-        if (!res.ok) {
-          console.error('Failed to fetch reviews for', product.id, res.status);
-          return;
-        }
+        if (!res.ok) return;
 
         const reviews: { rating?: number }[] = await res.json();
-        const count = reviews.length;
-        setReviewCount(count);
+        setReviewCount(reviews.length);
 
-        if (count > 0) {
+        if (reviews.length > 0) {
           const total = reviews.reduce(
             (sum, r) => sum + (r.rating ?? 0),
             0
           );
-          setAvgRating(total / count);
-        } else {
-          setAvgRating(null);
+          setAvgRating(total / reviews.length);
         }
       } catch (err) {
-        console.error('Error loading reviews for product', product.id, err);
+        console.error('Error loading reviews:', err);
       }
     }
 
@@ -50,73 +47,81 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
 
   const ratingToShow = avgRating ?? product.rating ?? 0;
   const reviewCountToShow = reviewCount ?? 0;
-
   const stockLabel =
     typeof product.stock === 'number'
-      ? product.stock > 0
-        ? `${product.stock} in stock`
-        : 'Out of stock'
+      ? product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'
       : '';
 
-  // Fallback so we always show *something* in the pill
-  const categoryLabel = product.category && product.category.trim().length > 0
-    ? product.category
-    : 'Category';
+  const categoryLabel =
+    product.category?.trim().length ? product.category : 'Category';
 
   return (
-    <Card className="flex flex-col overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
-      <div onClick={onClick}>
-        {/* Image */}
-        {product.image ? (
-          <img
-            src={product.image}
-            alt={product.name}
-            className="h-40 w-full object-cover"
-          />
-        ) : (
-          <div className="h-40 w-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-            No image
-          </div>
-        )}
+    <Card
+      className="
+        group flex flex-col overflow-hidden rounded-2xl border bg-white
+        shadow-sm hover:shadow-md hover:-translate-y-1
+        transition-all duration-200 cursor-pointer
+      "
+    >
+      {/* TOP (CLICKABLE AREA) */}
+      <div onClick={onClick} className="flex-1 flex flex-col">
+        
+        {/* SINGLE UNIFIED IMAGE BLOCK */}
+        <div
+          className="w-full overflow-hidden bg-muted"
+          style={{ height: IMAGE_HEIGHT }}
+        >
+          {product.image ? (
+            <img
+              src={product.image}
+              alt={product.name}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transition: 'transform 0.3s ease',
+              }}
+              className="group-hover:scale-105"
+            />
+          ) : (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
+              No Image
+            </div>
+          )}
+        </div>
 
-        <CardContent className="p-4 space-y-2">
-          {/* Name */}
-          <h3 className="font-semibold text-sm line-clamp-2">
+        {/* CONTENT */}
+        <CardContent className="p-4 space-y-3 flex-1 flex flex-col">
+
+          <h3 className="font-semibold text-base md:text-lg line-clamp-2 leading-snug">
             {product.name}
           </h3>
 
-          {/* Rating + reviews */}
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Star className="h-3 w-3 fill-current text-yellow-500" />
+          <div className="flex items-center gap-1 text-xs md:text-sm text-muted-foreground">
+            <Star className="h-4 w-4 fill-current text-yellow-500" />
             <span>{ratingToShow.toFixed(1)}</span>
             <span>•</span>
             <span>{reviewCountToShow} reviews</span>
           </div>
 
-          {/* Price */}
-          <div className="text-base font-semibold">
+          <div className="text-lg md:text-xl font-bold">
             {product.price.toFixed(2)} BHD
           </div>
 
-          {/* Bottom row: golden category pill + stock */}
-          <div className="mt-1 flex items-center justify-between text-[11px]">
-            {/* GOLD PILL – forced visible */}
+          <div className="flex items-center justify-between text-xs md:text-sm mt-auto">
             <span
               className="inline-flex items-center rounded-full px-2 py-0.5 font-medium"
-              style={{ backgroundColor: '#FDE68A', color: '#92400E' }} // soft gold bg, dark gold text
+              style={{ backgroundColor: '#FDE68A', color: '#92400E' }}
             >
               {categoryLabel}
             </span>
-
-            {stockLabel && (
-              <span className="text-muted-foreground">
-                {stockLabel}
-              </span>
-            )}
+            {stockLabel && <span className="text-muted-foreground">{stockLabel}</span>}
           </div>
+
         </CardContent>
       </div>
 
+      {/* ADD TO CART */}
       <CardFooter className="p-4 pt-0 mt-auto">
         <Button className="w-full" size="sm" onClick={onAddToCart}>
           Add to cart
