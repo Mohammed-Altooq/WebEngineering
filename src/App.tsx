@@ -14,9 +14,9 @@ import { StyleGuide } from './components/StyleGuide';
 import { Product } from './lib/mockData';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
-import { RegisterPage } from './components/RegisterPage'; // 🔹 NEW
+import { RegisterPage } from './components/RegisterPage';
 
-type UserRole = 'buyer' | 'seller';
+type UserRole = 'customer' | 'seller';
 
 interface User {
   id: string;
@@ -46,8 +46,24 @@ export default function App() {
   const isLoggedIn = !!user;
   const isSeller = user?.role === 'seller';
 
-  const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser);
+  // Called by LoginPage / RegisterPage
+  const handleLogin = (role: UserRole) => {
+    // For now we create a simple demo user object.
+    // Later you can replace this with real backend auth.
+    const demoUser: User = {
+      id: '1',
+      name: role === 'seller' ? 'Demo Seller' : 'Demo Customer',
+      email: role === 'seller' ? 'seller@example.com' : 'customer@example.com',
+      role,
+    };
+    setUser(demoUser);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentPage('home');
+    // If you want to clear cart on logout, uncomment:
+    // setCartItems([]);
   };
 
   const handleNavigate = (page: string, idOrCategory?: string) => {
@@ -71,62 +87,66 @@ export default function App() {
   };
 
   const handleAddToCart = (product: Product, quantity: number = 1) => {
-    const existingItem = cartItems.find(item => item.id === product.id);
-    
+    const existingItem = cartItems.find((item) => item.id === product.id);
+
     if (existingItem) {
-      setCartItems(cartItems.map(item =>
-        item.id === product.id
-          ? { ...item, quantity: Math.min(item.quantity + quantity, product.stock) }
-          : item
-      ));
+      setCartItems(
+        cartItems.map((item) =>
+          item.id === product.id
+            ? { ...item, quantity: Math.min(item.quantity + quantity, product.stock) }
+            : item,
+        ),
+      );
       toast.success(`Updated ${product.name} quantity in cart`);
     } else {
-      setCartItems([...cartItems, {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        image: product.image,
-        sellerName: product.sellerName,
-        quantity: quantity,
-        stock: product.stock
-      }]);
+      setCartItems([
+        ...cartItems,
+        {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          image: product.image,
+          sellerName: product.sellerName,
+          quantity,
+          stock: product.stock,
+        },
+      ]);
       toast.success(`Added ${product.name} to cart`);
     }
   };
 
   const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
-    setCartItems(cartItems.map(item =>
-      item.id === itemId
-        ? { ...item, quantity: newQuantity }
-        : item
-    ));
+    setCartItems(
+      cartItems.map((item) =>
+        item.id === itemId
+          ? { ...item, quantity: newQuantity }
+          : item,
+      ),
+    );
   };
 
   const handleRemoveItem = (itemId: string) => {
-    const item = cartItems.find(i => i.id === itemId);
-    setCartItems(cartItems.filter(item => item.id !== itemId));
+    const item = cartItems.find((i) => i.id === itemId);
+    setCartItems(cartItems.filter((item) => item.id !== itemId));
     if (item) {
       toast.success(`Removed ${item.name} from cart`);
     }
   };
 
-  const cartTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0) + (cartItems.length > 0 ? 3.50 : 0);
+  const cartTotal =
+    cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0) +
+    (cartItems.length > 0 ? 3.5 : 0);
 
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return (
-          <HomePage
-            onNavigate={handleNavigate}
-            onAddToCart={handleAddToCart}
-          />
-        );
-      
+        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />;
+
       case 'login':
         return (
           <LoginPage
             onNavigate={handleNavigate}
-            onLogin={handleLogin}      // 🔹 connect login
+            onLogin={handleLogin}
           />
         );
 
@@ -134,10 +154,10 @@ export default function App() {
         return (
           <RegisterPage
             onNavigate={handleNavigate}
-            onLogin={handleLogin}      // 🔹 connect register
+            onLogin={handleLogin}
           />
         );
-      
+
       case 'products':
         return (
           <ProductListingPage
@@ -149,95 +169,85 @@ export default function App() {
 
       case 'product-details':
         return selectedProductId ? (
-          <ProductDetailsPage 
+          <ProductDetailsPage
             productId={selectedProductId}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
-            isLoggedIn={isLoggedIn}    // 🔹 tells details page if user is logged in
+            isLoggedIn={isLoggedIn}
           />
         ) : (
-          <HomePage
-            onNavigate={handleNavigate}
-            onAddToCart={handleAddToCart}
-          />
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
         );
-      
+
       case 'cart':
         return (
-          <CartPage 
+          <CartPage
             cartItems={cartItems}
             onNavigate={handleNavigate}
             onUpdateQuantity={handleUpdateQuantity}
             onRemoveItem={handleRemoveItem}
           />
         );
-      
+
       case 'checkout':
         return (
-          <CheckoutPage 
+          <CheckoutPage
             cartItems={cartItems}
             cartTotal={cartTotal}
             onNavigate={handleNavigate}
           />
         );
-      
+
       case 'seller-dashboard':
-        return isSeller ? (                            // 🔹 only sellers can see dashboard
+        return isSeller ? (
           <SellerDashboard onNavigate={handleNavigate} />
         ) : (
           <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
         );
-      
+
       case 'seller-profile':
         return (
-          <SellerProfilePage 
+          <SellerProfilePage
             sellerId={selectedProductId}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
           />
         );
-      
+
       case 'reviews':
         return <ReviewPage onNavigate={handleNavigate} />;
-      
+
       case 'style-guide':
         return <StyleGuide />;
-      
+
       default:
-        return (
-          <HomePage
-            onNavigate={handleNavigate}
-            onAddToCart={handleAddToCart}
-          />
-        );
+        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar 
+      <Navbar
         onNavigate={handleNavigate}
         currentPage={currentPage}
         cartItemCount={cartItems.length}
-        // if your Navbar already supports these, you can add later:
-        // isLoggedIn={isLoggedIn}
-        // isSeller={isSeller}
+        isLoggedIn={isLoggedIn}
+        isSeller={isSeller}
+        onLogout={handleLogout}
       />
-      
-      <main>
-        {renderPage()}
-      </main>
+
+      <main>{renderPage()}</main>
 
       <Footer />
-      
-      <Toaster 
+
+      <Toaster
         position="bottom-right"
         toastOptions={{
           style: {
             background: '#666666',
             color: '#fff',
-            border: 'none'
-          }
+            border: 'none',
+          },
         }}
       />
     </div>

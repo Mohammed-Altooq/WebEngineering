@@ -1,4 +1,4 @@
-import { ShoppingCart, User, Menu, Leaf } from 'lucide-react';
+import { ShoppingCart, User, Menu, Leaf, LogOut } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -7,9 +7,10 @@ interface NavbarProps {
   currentPage: string;
   cartItemCount?: number;
 
-  // NEW:
+  // auth state
   isLoggedIn: boolean;
   isSeller?: boolean; // optional, only matters for seller dashboard
+  onLogout: () => void; // 🔥 NEW
 }
 
 export function Navbar({
@@ -18,6 +19,7 @@ export function Navbar({
   cartItemCount = 0,
   isLoggedIn,
   isSeller = false,
+  onLogout,
 }: NavbarProps) {
   return (
     <motion.nav
@@ -100,21 +102,6 @@ export function Navbar({
               </motion.button>
             )}
 
-            {/* 🔐 Login button – only when NOT logged in */}
-            {!isLoggedIn && (
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  onClick={() => onNavigate('login')}
-                  variant="outline"
-                  size="sm"
-                  className="hidden sm:flex items-center space-x-2 hover:bg-primary/5 transition-all"
-                >
-                  <User className="w-4 h-4" />
-                  <span>Login</span>
-                </Button>
-              </motion.div>
-            )}
-
             {/* 🏪 Seller Dashboard – only if logged in AND seller */}
             {isLoggedIn && isSeller && (
               <motion.div
@@ -131,7 +118,34 @@ export function Navbar({
               </motion.div>
             )}
 
-            {/* Mobile Menu Button (unchanged, just opens whatever mobile menu you add later) */}
+            {/* 🔐 Login / Logout */}
+            {!isLoggedIn ? (
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  onClick={() => onNavigate('login')}
+                  variant="outline"
+                  size="sm"
+                  className="hidden sm:flex items-center space-x-2 hover:bg-primary/5 transition-all"
+                >
+                  <User className="w-4 h-4" />
+                  <span>Login</span>
+                </Button>
+              </motion.div>
+            ) : (
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  onClick={onLogout}
+                  variant="ghost"
+                  size="sm"
+                  className="hidden sm:flex items-center space-x-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </Button>
+              </motion.div>
+            )}
+
+            {/* Mobile Menu Button (you can later expand this into a full drawer) */}
             <motion.button
               className="md:hidden p-2 hover:bg-secondary/50 rounded-lg transition-colors"
               aria-label="Menu"

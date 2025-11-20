@@ -6,21 +6,29 @@ import { Label } from './ui/label';
 import { Card } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
+type UserType = 'customer' | 'seller';
+
 interface LoginPageProps {
   onNavigate: (page: string) => void;
+  onLogin: (userType: UserType) => void;  // 🔥 NEW
 }
 
-export function LoginPage({ onNavigate }: LoginPageProps) {
-  const [userType, setUserType] = useState<'customer' | 'seller'>('customer');
+export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
+  const [userType, setUserType] = useState<UserType>('customer');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // here you can later add real validation / API
+    onLogin(userType); // 🔥 tell parent "I am customer/seller"
+
     if (userType === 'seller') {
       onNavigate('seller-dashboard');
     } else {
       onNavigate('home');
     }
   };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream py-12 px-4">
