@@ -108,13 +108,12 @@ export function ProductListingPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {/* Search */}
           <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
             <Input
-              className="pl-9"
+              className=""
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-            />
+              />
           </div>
 
           {/* Category */}
@@ -151,10 +150,7 @@ export function ProductListingPage({
             </SelectContent>
           </Select>
 
-          <Button variant="outline" className="flex items-center gap-2">
-            <SlidersHorizontal className="h-4 w-4" />
-            Filters
-          </Button>
+        
         </div>
       </div>
 

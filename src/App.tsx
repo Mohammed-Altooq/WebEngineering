@@ -15,6 +15,14 @@ import { Product } from './lib/mockData';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 
+type UserRole = 'buyer' | 'seller';
+
+interface User {
+  id: string;
+  role: UserRole;
+  name: string;
+}
+
 interface CartItem {
   id: string;
   name: string;
@@ -30,6 +38,11 @@ export default function App() {
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+
+  const [user, setUser] = useState<User | null>(null);
+
+  const isLoggedIn = !!user;
+  const isSeller = user?.role === 'seller';
 
   const handleNavigate = (page: string, idOrCategory?: string) => {
   setCurrentPage(page);

@@ -6,33 +6,39 @@ interface NavbarProps {
   onNavigate: (page: string) => void;
   currentPage: string;
   cartItemCount?: number;
+
+  // NEW:
+  isLoggedIn: boolean;
+  isSeller?: boolean; // optional, only matters for seller dashboard
 }
 
-export function Navbar({ onNavigate, currentPage, cartItemCount = 0 }: NavbarProps) {
+export function Navbar({
+  onNavigate,
+  currentPage,
+  cartItemCount = 0,
+  isLoggedIn,
+  isSeller = false,
+}: NavbarProps) {
   return (
-    <motion.nav 
+    <motion.nav
       className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm"
       initial={{ y: -100 }}
       animate={{ y: 0 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <motion.button 
+          <motion.button
             onClick={() => onNavigate('home')}
             className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <motion.div 
-              className="bg-primary rounded-full p-2"
-              whileHover={{ rotate: 360 }}
-              transition={{ duration: 0.6 }}
-            >
-              <Leaf className="w-5 h-5 text-white" />
-            </motion.div>
-            <span className="font-['Poppins'] font-semibold text-xl text-foreground">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/10 to-secondary/50 flex items-center justify-center shadow-md shadow-primary/20">
+              <Leaf className="w-5 h-5 text-primary" />
+            </div>
+            <span className="font-['Poppins'] text-xl text-foreground">
               Local Harvest
             </span>
           </motion.button>
@@ -42,14 +48,13 @@ export function Navbar({ onNavigate, currentPage, cartItemCount = 0 }: NavbarPro
             {[
               { name: 'Home', page: 'home' },
               { name: 'Marketplace', page: 'products' },
-              { name: 'Style Guide', page: 'style-guide' }
             ].map((item) => (
-              <motion.button 
+              <motion.button
                 key={item.page}
                 onClick={() => onNavigate(item.page)}
                 className={`relative transition-colors ${
-                  currentPage === item.page 
-                    ? 'text-primary font-medium' 
+                  currentPage === item.page
+                    ? 'text-primary font-medium'
                     : 'text-foreground/70 hover:text-primary'
                 }`}
                 whileHover={{ y: -2 }}
@@ -60,7 +65,7 @@ export function Navbar({ onNavigate, currentPage, cartItemCount = 0 }: NavbarPro
                   <motion.div
                     className="absolute -bottom-[21px] left-0 right-0 h-0.5 bg-primary"
                     layoutId="navbar-underline"
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                   />
                 )}
               </motion.button>
@@ -69,59 +74,65 @@ export function Navbar({ onNavigate, currentPage, cartItemCount = 0 }: NavbarPro
 
           {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
-            <motion.button 
-              onClick={() => onNavigate('cart')}
-              className="relative p-2 hover:bg-secondary/50 rounded-lg transition-colors"
-              aria-label="Shopping cart"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-            >
-              <ShoppingCart className="w-5 h-5 text-foreground" />
-              <AnimatePresence>
-                {cartItemCount > 0 && (
-                  <motion.span 
-                    className="absolute -top-1 -right-1 bg-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                  >
-                    {cartItemCount}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </motion.button>
-            
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button 
-                onClick={() => onNavigate('login')}
-                variant="outline"
-                size="sm"
-                className="hidden sm:flex items-center space-x-2 hover:bg-primary/5 transition-all"
+            {/* 🛒 Cart – only when logged in */}
+            {isLoggedIn && (
+              <motion.button
+                onClick={() => onNavigate('cart')}
+                className="relative p-2 hover:bg-secondary/50 rounded-lg transition-colors"
+                aria-label="Shopping cart"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
               >
-                <User className="w-4 h-4" />
-                <span>Login</span>
-              </Button>
-            </motion.div>
+                <ShoppingCart className="w-5 h-5 text-foreground" />
+                <AnimatePresence>
+                  {cartItemCount > 0 && (
+                    <motion.span
+                      className="absolute -top-1 -right-1 bg-primary text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                    >
+                      {cartItemCount}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+            )}
 
-            <motion.div
-              whileHover={{ scale: 1.05, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button 
-                onClick={() => onNavigate('seller-dashboard')}
-                size="sm"
-                className="hidden sm:inline-flex bg-primary hover:bg-primary/90 shadow-md shadow-primary/20"
+            {/* 🔐 Login button – only when NOT logged in */}
+            {!isLoggedIn && (
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  onClick={() => onNavigate('login')}
+                  variant="outline"
+                  size="sm"
+                  className="hidden sm:flex items-center space-x-2 hover:bg-primary/5 transition-all"
+                >
+                  <User className="w-4 h-4" />
+                  <span>Login</span>
+                </Button>
+              </motion.div>
+            )}
+
+            {/* 🏪 Seller Dashboard – only if logged in AND seller */}
+            {isLoggedIn && isSeller && (
+              <motion.div
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.95 }}
               >
-                Seller Dashboard
-              </Button>
-            </motion.div>
+                <Button
+                  onClick={() => onNavigate('seller-dashboard')}
+                  size="sm"
+                  className="hidden sm:inline-flex bg-primary hover:bg-primary/90 shadow-md shadow-primary/20"
+                >
+                  Seller Dashboard
+                </Button>
+              </motion.div>
+            )}
 
-            {/* Mobile Menu Button */}
-            <motion.button 
+            {/* Mobile Menu Button (unchanged, just opens whatever mobile menu you add later) */}
+            <motion.button
               className="md:hidden p-2 hover:bg-secondary/50 rounded-lg transition-colors"
               aria-label="Menu"
               whileHover={{ scale: 1.1 }}
