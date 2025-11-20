@@ -14,13 +14,15 @@ import { StyleGuide } from './components/StyleGuide';
 import { Product } from './lib/mockData';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
+import { RegisterPage } from './components/RegisterPage'; // 🔹 NEW
 
 type UserRole = 'buyer' | 'seller';
 
 interface User {
   id: string;
-  role: UserRole;
   name: string;
+  email: string;
+  role: UserRole;
 }
 
 interface CartItem {
@@ -44,26 +46,29 @@ export default function App() {
   const isLoggedIn = !!user;
   const isSeller = user?.role === 'seller';
 
+  const handleLogin = (loggedInUser: User) => {
+    setUser(loggedInUser);
+  };
+
   const handleNavigate = (page: string, idOrCategory?: string) => {
-  setCurrentPage(page);
+    setCurrentPage(page);
 
-  // used for product details & seller profile
-  if (page === 'product-details' || page === 'seller-profile') {
-    setSelectedProductId(idOrCategory);
-  } else {
-    setSelectedProductId(undefined);
-  }
+    // used for product details & seller profile
+    if (page === 'product-details' || page === 'seller-profile') {
+      setSelectedProductId(idOrCategory);
+    } else {
+      setSelectedProductId(undefined);
+    }
 
-  // used for marketplace filter
-  if (page === 'products') {
-    setSelectedCategory(idOrCategory); // can be undefined (means "all")
-  } else {
-    setSelectedCategory(undefined);
-  }
+    // used for marketplace filter
+    if (page === 'products') {
+      setSelectedCategory(idOrCategory); // can be undefined (means "all")
+    } else {
+      setSelectedCategory(undefined);
+    }
 
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handleAddToCart = (product: Product, quantity: number = 1) => {
     const existingItem = cartItems.find(item => item.id === product.id);
@@ -110,31 +115,52 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />;
+        return (
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+          />
+        );
       
       case 'login':
-        return <LoginPage onNavigate={handleNavigate} />;
+        return (
+          <LoginPage
+            onNavigate={handleNavigate}
+            onLogin={handleLogin}      // 🔹 connect login
+          />
+        );
+
+      case 'register':
+        return (
+          <RegisterPage
+            onNavigate={handleNavigate}
+            onLogin={handleLogin}      // 🔹 connect register
+          />
+        );
       
       case 'products':
-  return (
-    <ProductListingPage
-      onNavigate={handleNavigate}
-      onAddToCart={handleAddToCart}
-      initialCategory={selectedCategory}
-    />
-  );
+        return (
+          <ProductListingPage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            initialCategory={selectedCategory}
+          />
+        );
 
-      
       case 'product-details':
-  return selectedProductId ? (
-    <ProductDetailsPage 
-      productId={selectedProductId}
-      onNavigate={handleNavigate}
-      onAddToCart={handleAddToCart}
-    />
-  ) : (
-    <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
-  );
+        return selectedProductId ? (
+          <ProductDetailsPage 
+            productId={selectedProductId}
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            isLoggedIn={isLoggedIn}    // 🔹 tells details page if user is logged in
+          />
+        ) : (
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+          />
+        );
       
       case 'cart':
         return (
@@ -156,7 +182,11 @@ export default function App() {
         );
       
       case 'seller-dashboard':
-        return <SellerDashboard onNavigate={handleNavigate} />;
+        return isSeller ? (                            // 🔹 only sellers can see dashboard
+          <SellerDashboard onNavigate={handleNavigate} />
+        ) : (
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
+        );
       
       case 'seller-profile':
         return (
@@ -174,7 +204,12 @@ export default function App() {
         return <StyleGuide />;
       
       default:
-        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />;
+        return (
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+          />
+        );
     }
   };
 
@@ -184,6 +219,9 @@ export default function App() {
         onNavigate={handleNavigate}
         currentPage={currentPage}
         cartItemCount={cartItems.length}
+        // if your Navbar already supports these, you can add later:
+        // isLoggedIn={isLoggedIn}
+        // isSeller={isSeller}
       />
       
       <main>

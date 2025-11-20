@@ -123,7 +123,14 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   <div className="text-center pt-4">
                     <p className="text-sm text-foreground/70">
                       Don't have an account?{' '}
-                      <a href="#" className="text-primary hover:underline">Register here</a>
+                      <button
+  type="button"
+  onClick={() => onNavigate("register")}
+  className="text-primary hover:underline"
+>
+  Register here
+</button>
+
                     </p>
                   </div>
 
@@ -182,7 +189,14 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   <div className="text-center pt-4">
                     <p className="text-sm text-foreground/70">
                       New seller?{' '}
-                      <a href="#" className="text-primary hover:underline">Apply to sell</a>
+                      <button
+  type="button"
+  onClick={() => onNavigate("register")}
+  className="text-primary hover:underline"
+>
+  Apply to Sell
+</button>
+
                     </p>
                   </div>
 

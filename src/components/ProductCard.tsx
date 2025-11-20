@@ -10,13 +10,16 @@ interface ProductCardProps {
   product: Product;
   onClick: () => void;
   onAddToCart: () => void;
+
+  // NEW: to hide Add to Cart
+  isLoggedIn: boolean;
 }
 
-export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps) {
+export function ProductCard({ product, onClick, onAddToCart, isLoggedIn }: ProductCardProps) {
   const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [avgRating, setAvgRating] = useState<number | null>(null);
 
-  // 👇 You only edit this number to make the card taller/shorter
+  // 👇 Your original exact height — untouched
   const IMAGE_HEIGHT = "430px";
 
   useEffect(() => {
@@ -69,7 +72,7 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
         {/* SINGLE UNIFIED IMAGE BLOCK */}
         <div
           className="w-full overflow-hidden bg-muted"
-          style={{ height: IMAGE_HEIGHT }}
+          style={{ height: IMAGE_HEIGHT }}   // ⬅ your original dimension
         >
           {product.image ? (
             <img
@@ -123,9 +126,17 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
 
       {/* ADD TO CART */}
       <CardFooter className="p-4 pt-0 mt-auto">
-        <Button className="w-full" size="sm" onClick={onAddToCart}>
-          Add to cart
-        </Button>
+
+        {isLoggedIn ? (
+          <Button className="w-full" size="sm" onClick={onAddToCart}>
+            Add to cart
+          </Button>
+        ) : (
+          <Button className="w-full opacity-60 cursor-not-allowed" disabled>
+            Login to add
+          </Button>
+        )}
+
       </CardFooter>
     </Card>
   );

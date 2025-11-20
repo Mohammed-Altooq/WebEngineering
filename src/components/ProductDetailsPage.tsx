@@ -35,12 +35,14 @@ interface ProductDetailsPageProps {
   productId: string;
   onNavigate: (page: string, productId?: string) => void;
   onAddToCart: (product: Product, quantity?: number) => void;
+  isLoggedIn: boolean;
 }
 
 export function ProductDetailsPage({
   productId,
   onNavigate,
   onAddToCart,
+  isLoggedIn,
 }: ProductDetailsPageProps) {
   const [product, setProduct] = useState<Product | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
@@ -225,51 +227,56 @@ export function ProductDetailsPage({
               </span>
             </div>
 
-            <Separator />
+            {/* 🔒 Only show these if logged in */}
+            {isLoggedIn && (
+              <>
+                <Separator />
 
-            {/* Quantity Selector */}
-            <div className="space-y-3">
-              <label className="font-['Lato']">Quantity</label>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center border border-border rounded-lg bg-white">
-                  <button
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="p-3 hover:bg-secondary transition-colors"
-                  >
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <span className="px-6 font-['Roboto_Mono']">{quantity}</span>
-                  <button
-                    onClick={() => setQuantity(
-                      typeof product.stock === 'number' 
-                        ? Math.min(product.stock, quantity + 1)
-                        : quantity + 1
-                    )}
-                    className="p-3 hover:bg-secondary transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+                {/* Quantity Selector */}
+                <div className="space-y-3">
+                  <label className="font-['Lato']">Quantity</label>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center border border-border rounded-lg bg-white">
+                      <button
+                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                        className="p-3 hover:bg-secondary transition-colors"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="px-6 font-['Roboto_Mono']">{quantity}</span>
+                      <button
+                        onClick={() => setQuantity(
+                          typeof product.stock === 'number' 
+                            ? Math.min(product.stock, quantity + 1)
+                            : quantity + 1
+                        )}
+                        className="p-3 hover:bg-secondary transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      Total: ${(product.price * quantity).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-sm text-muted-foreground">
-                  Total: ${(product.price * quantity).toFixed(2)}
-                </span>
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <Button 
-                className="flex-1 bg-primary hover:bg-primary/90 h-12"
-                onClick={handleAddToCart}
-                disabled={typeof product.stock === 'number' && product.stock === 0}
-              >
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                Add to Cart
-              </Button>
-              <Button variant="outline" className="h-12">
-                <Share2 className="w-5 h-5" />
-              </Button>
-            </div>
+                {/* Action Buttons */}
+                <div className="flex gap-4">
+                  <Button 
+                    className="flex-1 bg-primary hover:bg-primary/90 h-12"
+                    onClick={handleAddToCart}
+                    disabled={typeof product.stock === 'number' && product.stock === 0}
+                  >
+                    <ShoppingCart className="w-5 h-5 mr-2" />
+                    Add to Cart
+                  </Button>
+                  <Button variant="outline" className="h-12">
+                    <Share2 className="w-5 h-5" />
+                  </Button>
+                </div>
+              </>
+            )}
 
             {/* Seller Info Card */}
             {seller && (
@@ -365,22 +372,53 @@ export function ProductDetailsPage({
           ) : (
             <div className="text-center py-12">
               <p className="text-foreground/70 mb-4">No reviews yet</p>
-              <Button 
-                variant="outline"
-                onClick={() => onNavigate('reviews')}
-              >
-                Be the first to review
-              </Button>
+
+              {isLoggedIn ? (
+                <Button 
+                  variant="outline"
+                  onClick={() => onNavigate('reviews')}
+                >
+                  Be the first to review
+                </Button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-foreground/70">
+                    Please log in to be the first to review this product.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => onNavigate('login')}
+                  >
+                    Login to Write a Review
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
-          <Button 
-            variant="outline" 
-            className="w-full mt-6"
-            onClick={() => onNavigate('reviews')}
-          >
-            Write a Review
-          </Button>
+          {/* Bottom action: Write a Review */}
+          {isLoggedIn ? (
+            <Button 
+              variant="outline" 
+              className="w-full mt-6"
+              onClick={() => onNavigate('reviews')}
+            >
+              Write a Review
+            </Button>
+          ) : (
+            <div className="w-full mt-6 text-center">
+              <p className="text-sm text-foreground/70 mb-3">
+                You must be logged in to write a review.
+              </p>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => onNavigate('login')}
+              >
+                Login to Write a Review
+              </Button>
+            </div>
+          )}
         </Card>
       </div>
     </div>
