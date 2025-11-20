@@ -1,254 +1,241 @@
-import { useState } from 'react';
-import { Star, ShoppingCart, Heart, Share2, MapPin, Mail, Phone, ArrowLeft, Plus, Minus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Star, Share2, Heart } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
-import { Avatar, AvatarFallback } from './ui/avatar';
-import { products, sellers, Product } from '../lib/mockData';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import type { Product } from '../lib/mockData'; // keep using this type for now
 
-interface ProductDetailsPageProps {
-  productId?: string;
-  onNavigate: (page: string) => void;
-  onAddToCart: (product: Product, quantity: number) => void;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+
+interface Review {
+  id: string;
+  customerId: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  date: string;
 }
 
-export function ProductDetailsPage({ productId, onNavigate, onAddToCart }: ProductDetailsPageProps) {
-  const [quantity, setQuantity] = useState(1);
-  const product = products.find(p => p.id === productId) || products[0];
-  const seller = sellers.find(s => s.id === product.sellerId);
+interface ProductDetailsPageProps {
+  productId: string;
+  onNavigate: (page: string, productId?: string) => void;
+  onAddToCart: (product: Product, quantity?: number) => void;
+}
 
-  const handleAddToCart = () => {
-    onAddToCart(product, quantity);
+export function ProductDetailsPage({
+  productId,
+  onNavigate,
+  onAddToCart,
+}: ProductDetailsPageProps) {
+  const [product, setProduct] = useState<Product | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [quantity, setQuantity] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // 1) product
+        const prodRes = await fetch(`${API_BASE_URL}/api/products/${productId}`);
+        if (!prodRes.ok) throw new Error('Failed to load product');
+        const prodData: Product = await prodRes.json();
+        setProduct(prodData);
+
+        // 2) reviews
+        const reviewsRes = await fetch(
+          `${API_BASE_URL}/api/products/${productId}/reviews`
+        );
+        if (reviewsRes.ok) {
+          const reviewsData: Review[] = await reviewsRes.json();
+          setReviews(reviewsData);
+        } else {
+          setReviews([]);
+        }
+      } catch (err: any) {
+        console.error('Error loading product details:', err);
+        setError(err.message || 'Failed to load product details');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (productId) {
+      loadData();
+    }
+  }, [productId]);
+
+  const handleBack = () => {
+    onNavigate('products');
   };
 
-  return (
-    <div className="min-h-screen bg-soft-cream py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Back Button */}
-        <Button 
-          variant="ghost" 
-          onClick={() => onNavigate('products')}
-          className="mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+  const avgRating =
+    reviews.length > 0
+      ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length
+      : product?.rating ?? 0;
+
+  const reviewCount = reviews.length;
+
+  if (loading) {
+    return (
+      <div className="px-6 py-4">
+        <Button variant="ghost" onClick={handleBack} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Marketplace
         </Button>
+        <Card className="p-6">Loading product details...</Card>
+      </div>
+    );
+  }
 
-        {/* Product Section */}
-        <div className="grid md:grid-cols-2 gap-12 mb-12">
-          {/* Product Image */}
-          <div>
-            <div className="relative rounded-2xl overflow-hidden bg-white border border-border shadow-lg">
-              <ImageWithFallback
-                src={product.image}
-                alt={product.name}
-                className="w-full aspect-square object-cover"
-              />
-              <button className="absolute top-4 right-4 bg-white rounded-full p-3 shadow-lg hover:bg-secondary transition-colors">
-                <Heart className="w-5 h-5 text-foreground" />
-              </button>
-            </div>
-          </div>
-
-          {/* Product Info */}
-          <div className="space-y-6">
-            <div>
-              <Badge className="mb-3 bg-secondary text-secondary-foreground">
-                {product.category}
-              </Badge>
-              <h1 className="font-['Poppins'] text-3xl mb-2">{product.name}</h1>
-              <div className="flex items-center space-x-4 mb-4">
-                <div className="flex items-center space-x-1">
-                  {[...Array(5)].map((_, i) => (
-                    <Star 
-                      key={i} 
-                      className={`w-4 h-4 ${
-                        i < Math.floor(product.rating) 
-                          ? 'fill-golden-harvest text-golden-harvest' 
-                          : 'text-gray-300'
-                      }`} 
-                    />
-                  ))}
-                  <span className="ml-2">{product.rating}</span>
-                  <span className="text-muted-foreground">({product.reviews.length} reviews)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-baseline space-x-3">
-              <span className="font-['Poppins'] text-4xl text-primary">
-                ${product.price.toFixed(2)}
-              </span>
-              <span className="text-muted-foreground">per unit</span>
-            </div>
-
-            <p className="text-foreground/80 leading-relaxed">
-              {product.description}
-            </p>
-
-            {/* Stock Info */}
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${product.stock > 10 ? 'bg-olive-green' : 'bg-golden-harvest'}`} />
-              <span className="text-sm">
-                {product.stock > 10 ? 'In Stock' : `Only ${product.stock} left`}
-              </span>
-            </div>
-
-            <Separator />
-
-            {/* Quantity Selector */}
-            <div className="space-y-3">
-              <label className="font-['Lato']">Quantity</label>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center border border-border rounded-lg bg-white">
-                  <button
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="p-3 hover:bg-secondary transition-colors"
-                  >
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <span className="px-6 font-['Roboto_Mono']">{quantity}</span>
-                  <button
-                    onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                    className="p-3 hover:bg-secondary transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-                <span className="text-sm text-muted-foreground">
-                  Total: ${(product.price * quantity).toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <Button 
-                className="flex-1 bg-primary hover:bg-primary/90 h-12"
-                onClick={handleAddToCart}
-              >
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                Add to Cart
-              </Button>
-              <Button variant="outline" className="h-12">
-                <Share2 className="w-5 h-5" />
-              </Button>
-            </div>
-
-            {/* Seller Info Card */}
-            {seller && (
-              <Card className="p-6 bg-white border border-border">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-12 h-12">
-                      <ImageWithFallback
-                        src={seller.image}
-                        alt={seller.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <AvatarFallback>{seller.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h3 className="font-['Lato']">{seller.name}</h3>
-                      <p className="text-sm text-muted-foreground capitalize">{seller.type}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Star className="w-4 h-4 fill-golden-harvest text-golden-harvest" />
-                    <span>{seller.rating}</span>
-                  </div>
-                </div>
-                
-                <p className="text-sm text-foreground/70 mb-4">{seller.description}</p>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center space-x-2 text-muted-foreground">
-                    <MapPin className="w-4 h-4" />
-                    <span>{seller.location}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-muted-foreground">
-                    <Mail className="w-4 h-4" />
-                    <span>{seller.contactEmail}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-muted-foreground">
-                    <Phone className="w-4 h-4" />
-                    <span>{seller.contactPhone}</span>
-                  </div>
-                </div>
-
-                <Button 
-                  variant="outline" 
-                  className="w-full mt-4"
-                  onClick={() => onNavigate('seller-profile', seller.id)}
-                >
-                  View Seller Profile
-                </Button>
-              </Card>
-            )}
-          </div>
-        </div>
-
-        {/* Reviews Section */}
-        <Card className="p-8 bg-white border border-border">
-          <h2 className="font-['Poppins'] text-2xl mb-6">Customer Reviews</h2>
-          
-          {product.reviews.length > 0 ? (
-            <div className="space-y-6">
-              {product.reviews.map(review => (
-                <div key={review.id} className="border-b border-border pb-6 last:border-0">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h4 className="font-['Lato']">{review.customerName}</h4>
-                        <span className="text-sm text-muted-foreground">
-                          {new Date(review.date).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric', 
-                            year: 'numeric' 
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        {[...Array(5)].map((_, i) => (
-                          <Star 
-                            key={i} 
-                            className={`w-4 h-4 ${
-                              i < review.rating 
-                                ? 'fill-golden-harvest text-golden-harvest' 
-                                : 'text-gray-300'
-                            }`} 
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-foreground/80">{review.comment}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-foreground/70 mb-4">No reviews yet</p>
-              <Button 
-                variant="outline"
-                onClick={() => onNavigate('reviews')}
-              >
-                Be the first to review
-              </Button>
-            </div>
-          )}
-
-          <Button 
-            variant="outline" 
-            className="w-full mt-6"
-            onClick={() => onNavigate('reviews')}
-          >
-            Write a Review
-          </Button>
+  if (error || !product) {
+    return (
+      <div className="px-6 py-4">
+        <Button variant="ghost" onClick={handleBack} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Marketplace
+        </Button>
+        <Card className="p-6 text-red-500">
+          Failed to load product details: {error ?? 'Unknown error'}
         </Card>
       </div>
+    );
+  }
+
+  return (
+    <div className="px-6 py-4 flex flex-col gap-6">
+      {/* Back link */}
+      <Button variant="ghost" onClick={handleBack} className="w-fit">
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Back to Marketplace
+      </Button>
+
+      <div className="grid gap-6 lg:grid-cols-[2fr,3fr] items-start">
+        {/* Image */}
+        <Card className="overflow-hidden">
+          {product.image ? (
+            <img
+              src={product.image}
+              alt={product.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="h-72 flex items-center justify-center text-muted-foreground">
+              No image
+            </div>
+          )}
+        </Card>
+
+        {/* Right side: details */}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 mb-2">
+                {product.category || 'Product'}
+              </div>
+              <h1 className="text-2xl font-semibold mb-1">
+                {product.name}
+              </h1>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Star className="h-4 w-4 fill-current text-yellow-500" />
+                <span>{avgRating.toFixed(1)}</span>
+                <span>({reviewCount} reviews)</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" size="icon">
+                <Heart className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon">
+                <Share2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="text-2xl font-bold">
+            {product.price.toFixed(2)} BHD
+            <span className="text-sm font-normal text-muted-foreground ml-1">
+              per unit
+            </span>
+          </div>
+
+          <p className="text-sm text-muted-foreground">
+            {product.description || 'No description provided for this product.'}
+          </p>
+
+          <div className="text-sm text-emerald-700 font-medium">
+            • In Stock
+          </div>
+
+          {/* Quantity + Add to Cart */}
+          <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center border rounded-md overflow-hidden">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() =>
+                  setQuantity((q) => Math.max(1, q - 1))
+                }
+              >
+                −
+              </Button>
+              <div className="px-4 py-2 text-sm">{quantity}</div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() =>
+                  setQuantity((q) =>
+                    product.stock ? Math.min(product.stock, q + 1) : q + 1
+                  )
+                }
+              >
+                +
+              </Button>
+            </div>
+
+            <Button
+              className="flex-1"
+              onClick={() => onAddToCart(product, quantity)}
+            >
+              Add to Cart
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Reviews */}
+      <Card className="p-6">
+        <h2 className="font-semibold mb-4">Customer Reviews</h2>
+        {reviews.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No reviews yet for this product.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((r) => (
+              <div
+                key={r.id}
+                className="border-b pb-3 last:border-b-0 last:pb-0"
+              >
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{r.customerName}</span>
+                  <span className="flex items-center gap-1">
+                    <Star className="h-3 w-3 fill-current text-yellow-500" />
+                    {r.rating.toFixed(1)}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mb-1">
+                  {r.date}
+                </div>
+                <p className="text-sm">{r.comment}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

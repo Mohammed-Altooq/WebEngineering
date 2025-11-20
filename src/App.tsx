@@ -95,13 +95,15 @@ export default function App() {
         );
       
       case 'product-details':
-        return (
-          <ProductDetailsPage 
-            productId={selectedProductId}
-            onNavigate={handleNavigate}
-            onAddToCart={handleAddToCart}
-          />
-        );
+  return selectedProductId ? (
+    <ProductDetailsPage 
+      productId={selectedProductId}
+      onNavigate={handleNavigate}
+      onAddToCart={handleAddToCart}
+    />
+  ) : (
+    <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
+  );
       
       case 'cart':
         return (

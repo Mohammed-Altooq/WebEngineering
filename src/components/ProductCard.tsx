@@ -1,137 +1,94 @@
-import { Star, ShoppingCart } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Star } from 'lucide-react';
+import { Card, CardContent, CardFooter } from './ui/card';
 import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { Product } from '../lib/mockData';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import { motion } from 'framer-motion';
-import { useState } from 'react';
+import type { Product } from '../components/ProductListingPage'; // adjust import if needed
+
+// Same pattern as ProductListingPage
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 interface ProductCardProps {
   product: Product;
-  onViewDetails: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
-  onViewSeller?: (sellerId: string) => void;
+  onClick: () => void;
+  onAddToCart: () => void;
 }
 
-export function ProductCard({ product, onViewDetails, onAddToCart, onViewSeller }: ProductCardProps) {
-  const [isAdding, setIsAdding] = useState(false);
+export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps) {
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
 
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsAdding(true);
-    onAddToCart?.(product);
-    setTimeout(() => setIsAdding(false), 600);
-  };
+  useEffect(() => {
+    async function loadReviews() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/products/${product.id}/reviews`);
+        if (!res.ok) {
+          console.error('Failed to fetch reviews for', product.id, res.status);
+          return;
+        }
+
+        const reviews: { rating?: number }[] = await res.json();
+
+        const count = reviews.length;
+        setReviewCount(count);
+
+        if (count > 0) {
+          const total = reviews.reduce(
+            (sum, r) => sum + (r.rating ?? 0),
+            0
+          );
+          setAvgRating(total / count);
+        } else {
+          setAvgRating(null);
+        }
+      } catch (err) {
+        console.error('Error loading reviews for product', product.id, err);
+      }
+    }
+
+    loadReviews();
+  }, [product.id]);
+
+  // Decide what to show:
+  const ratingToShow =
+    avgRating ?? product.rating ?? 0; // use avg if loaded, else product.rating, else 0
+  const reviewCountToShow = reviewCount ?? 0;
 
   return (
-    <motion.div
-      whileHover={{ y: -8, scale: 1.02 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
-    >
-      <Card className="group overflow-hidden border border-border bg-white hover:shadow-2xl transition-all duration-300 rounded-xl">
-        <div 
-          className="cursor-pointer" 
-          onClick={() => onViewDetails(product.id)}
-        >
-          {/* Image */}
-          <div className="relative overflow-hidden aspect-square bg-secondary/20">
-            <motion.div
-              whileHover={{ scale: 1.1 }}
-              transition={{ duration: 0.4 }}
-            >
-              <ImageWithFallback
-                src={product.image}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
-            </motion.div>
-            <motion.div 
-              className="absolute top-3 right-3 bg-primary text-white px-3 py-1 rounded-full shadow-lg"
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
-              whileHover={{ scale: 1.1, rotate: 5 }}
-            >
-              <span className="font-['Roboto_Mono']">${product.price.toFixed(2)}</span>
-            </motion.div>
-            
-            {/* Overlay on hover */}
-            <motion.div 
-              className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-            />
+    <Card className="flex flex-col overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+      <div onClick={onClick}>
+        {product.image ? (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-40 w-full object-cover"
+          />
+        ) : (
+          <div className="h-40 w-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
+            No image
+          </div>
+        )}
+
+        <CardContent className="p-4 space-y-2">
+          <h3 className="font-semibold text-sm line-clamp-2">{product.name}</h3>
+
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Star className="h-3 w-3 fill-current text-yellow-500" />
+            <span>{ratingToShow.toFixed(1)}</span>
+            <span>•</span>
+            <span>{reviewCountToShow} reviews</span>
           </div>
 
-          {/* Content */}
-          <div className="p-4 space-y-3">
-            <div>
-              <h3 className="font-['Lato'] line-clamp-1 group-hover:text-primary transition-colors">{product.name}</h3>
-              <motion.button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewSeller?.(product.sellerId);
-                }}
-                className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                whileHover={{ x: 2 }}
-              >
-                {product.sellerName}
-              </motion.button>
-            </div>
-
-            <p className="text-sm text-foreground/70 line-clamp-2">
-              {product.description}
-            </p>
-
-            {/* Rating */}
-            <div className="flex items-center space-x-1">
-              <motion.div
-                whileHover={{ rotate: 360 }}
-                transition={{ duration: 0.5 }}
-              >
-                <Star className="w-4 h-4 fill-golden-harvest text-golden-harvest" />
-              </motion.div>
-              <span className="text-sm">{product.rating}</span>
-              <span className="text-xs text-muted-foreground">
-                ({product.reviews?.length || 0} reviews)
-              </span>
-            </div>
-
-            {/* Category Badge */}
-            <div className="flex items-center justify-between">
-              <motion.span 
-                className="text-xs bg-secondary text-secondary-foreground px-3 py-1 rounded-full"
-                whileHover={{ scale: 1.05 }}
-              >
-                {product.category}
-              </motion.span>
-              <span className="text-xs text-muted-foreground">
-                {product.stock} in stock
-              </span>
-            </div>
+          <div className="text-base font-semibold">
+            {product.price.toFixed(2)} BHD
           </div>
-        </div>
+        </CardContent>
+      </div>
 
-        {/* Add to Cart Button */}
-        <div className="px-4 pb-4">
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Button
-              onClick={handleAddToCart}
-              className="w-full bg-primary hover:bg-primary/90 hover:shadow-lg shadow-primary/20 transition-all relative overflow-hidden"
-            >
-              <motion.div
-                className="absolute inset-0 bg-white/20"
-                initial={{ x: '-100%' }}
-                animate={isAdding ? { x: '100%' } : { x: '-100%' }}
-                transition={{ duration: 0.6 }}
-              />
-              <ShoppingCart className="w-4 h-4 mr-2" />
-              {isAdding ? 'Added!' : 'Add to Cart'}
-            </Button>
-          </motion.div>
-        </div>
-      </Card>
-    </motion.div>
+      <CardFooter className="p-4 pt-0 mt-auto">
+        <Button className="w-full" size="sm" onClick={onAddToCart}>
+          Add to cart
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
