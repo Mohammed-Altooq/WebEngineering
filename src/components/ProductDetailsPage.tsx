@@ -36,6 +36,7 @@ interface ProductDetailsPageProps {
   onNavigate: (page: string, productId?: string) => void;
   onAddToCart: (product: Product, quantity?: number) => void;
   isLoggedIn: boolean;
+  currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
 }
 
 export function ProductDetailsPage({
@@ -43,6 +44,7 @@ export function ProductDetailsPage({
   onNavigate,
   onAddToCart,
   isLoggedIn,
+  currentUser,
 }: ProductDetailsPageProps) {
   const [product, setProduct] = useState<Product | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
@@ -50,6 +52,10 @@ export function ProductDetailsPage({
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Check if user is a customer (can add to cart)
+  const isCustomer = isLoggedIn && currentUser?.role === 'customer';
+  const isSeller = currentUser?.role === 'seller';
 
   useEffect(() => {
     async function loadData() {
@@ -98,7 +104,7 @@ export function ProductDetailsPage({
   }, [productId]);
 
   const handleAddToCart = () => {
-    if (product) {
+    if (product && isCustomer) {
       onAddToCart(product, quantity);
     }
   };
@@ -199,7 +205,7 @@ export function ProductDetailsPage({
 
             <div className="flex items-baseline space-x-3">
               <span className="font-['Poppins'] text-4xl text-primary">
-                ${product.price.toFixed(2)}
+                BD {product.price.toFixed(3)}
               </span>
               <span className="text-muted-foreground">per unit</span>
             </div>
@@ -227,8 +233,8 @@ export function ProductDetailsPage({
               </span>
             </div>
 
-            {/* 🔒 Only show these if logged in */}
-            {isLoggedIn && (
+            {/* 🔒 Only show cart functionality for CUSTOMERS */}
+            {isCustomer && (
               <>
                 <Separator />
 
@@ -256,7 +262,7 @@ export function ProductDetailsPage({
                       </button>
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      Total: ${(product.price * quantity).toFixed(2)}
+                      Total: BD {(product.price * quantity).toFixed(3)}
                     </span>
                   </div>
                 </div>
@@ -276,6 +282,30 @@ export function ProductDetailsPage({
                   </Button>
                 </div>
               </>
+            )}
+
+            {/* Message for sellers */}
+            {isSeller && (
+              <Card className="p-4 bg-blue-50 border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>Seller Account:</strong> You cannot purchase items as you are logged in as a seller. This product is available for customers to purchase.
+                </p>
+              </Card>
+            )}
+
+            {/* Message for non-logged in users */}
+            {!isLoggedIn && (
+              <Card className="p-4 bg-gray-50 border border-gray-200">
+                <p className="text-sm text-gray-700 mb-3">
+                  Please log in as a customer to purchase this product.
+                </p>
+                <Button 
+                  onClick={() => onNavigate('login')}
+                  className="w-full"
+                >
+                  Login to Purchase
+                </Button>
+              </Card>
             )}
 
             {/* Seller Info Card */}
@@ -373,17 +403,17 @@ export function ProductDetailsPage({
             <div className="text-center py-12">
               <p className="text-foreground/70 mb-4">No reviews yet</p>
 
-              {isLoggedIn ? (
+              {isCustomer ? (
                 <Button 
                   variant="outline"
                   onClick={() => onNavigate('reviews')}
                 >
                   Be the first to review
                 </Button>
-              ) : (
+              ) : !isLoggedIn ? (
                 <div className="space-y-3">
                   <p className="text-sm text-foreground/70">
-                    Please log in to be the first to review this product.
+                    Please log in as a customer to review this product.
                   </p>
                   <Button
                     variant="outline"
@@ -392,12 +422,18 @@ export function ProductDetailsPage({
                     Login to Write a Review
                   </Button>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-foreground/70">
+                    Only customers can write reviews.
+                  </p>
+                </div>
               )}
             </div>
           )}
 
-          {/* Bottom action: Write a Review */}
-          {isLoggedIn ? (
+          {/* Bottom action: Write a Review - Only for customers */}
+          {isCustomer && (
             <Button 
               variant="outline" 
               className="w-full mt-6"
@@ -405,10 +441,12 @@ export function ProductDetailsPage({
             >
               Write a Review
             </Button>
-          ) : (
+          )}
+
+          {!isLoggedIn && (
             <div className="w-full mt-6 text-center">
               <p className="text-sm text-foreground/70 mb-3">
-                You must be logged in to write a review.
+                You must be logged in as a customer to write a review.
               </p>
               <Button
                 variant="outline"

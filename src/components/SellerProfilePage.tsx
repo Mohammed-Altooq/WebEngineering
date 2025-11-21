@@ -14,7 +14,6 @@ interface SellerProfilePageProps {
   onNavigate: (page: string, productId?: string) => void;
   onAddToCart: (product: Product) => void;
 }
-
 export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerProfilePageProps) {
   const seller = sellers.find(s => s.id === sellerId) || sellers[0];
   const sellerProducts = products.filter(p => p.sellerId === seller.id);

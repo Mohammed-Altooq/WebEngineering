@@ -1,6 +1,7 @@
-import { ShoppingCart, User, Menu, Leaf, LogOut } from 'lucide-react';
+import { ShoppingCart, User, Menu, Leaf, LogOut, Settings, Package, UserCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 
 interface NavbarProps {
   onNavigate: (page: string) => void;
@@ -21,6 +22,8 @@ export function Navbar({
   isSeller = false,
   onLogout,
 }: NavbarProps) {
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
   return (
     <motion.nav
       className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm"
@@ -76,8 +79,8 @@ export function Navbar({
 
           {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
-            {/* 🛒 Cart – only when logged in */}
-            {isLoggedIn && (
+            {/* 🛒 Cart – only for customers, not sellers */}
+            {isLoggedIn && !isSeller && (
               <motion.button
                 onClick={() => onNavigate('cart')}
                 className="relative p-2 hover:bg-secondary/50 rounded-lg transition-colors"
@@ -113,13 +116,68 @@ export function Navbar({
                   size="sm"
                   className="hidden sm:inline-flex bg-primary hover:bg-primary/90 shadow-md shadow-primary/20"
                 >
-                  Seller Dashboard
+                  <Package className="w-4 h-4 mr-2" />
+                  Dashboard
                 </Button>
               </motion.div>
             )}
 
-            {/* 🔐 Login / Logout */}
-            {!isLoggedIn ? (
+            {/* Profile Dropdown */}
+            {isLoggedIn ? (
+              <div className="relative">
+                <motion.button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="flex items-center space-x-2 p-2 hover:bg-secondary/50 rounded-lg transition-colors"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <UserCircle className="w-5 h-5 text-foreground" />
+                  <span className="hidden sm:inline text-sm">
+                    {isSeller ? 'Seller' : 'Profile'}
+                  </span>
+                </motion.button>
+
+                <AnimatePresence>
+                  {showProfileMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-border z-50"
+                    >
+                      <div className="py-2">
+                        <button
+                          onClick={() => {
+                            onNavigate(isSeller ? 'seller-profile-edit' : 'customer-profile');
+                            setShowProfileMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center space-x-2"
+                        >
+                          <Settings className="w-4 h-4" />
+                          <span>{isSeller ? 'Edit Profile' : 'My Profile'}</span>
+                        </button>
+                        
+              
+
+                        <div className="border-t border-border my-1"></div>
+                        
+                        <button
+                          onClick={() => {
+                            onLogout();
+                            setShowProfileMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center space-x-2 text-red-600"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>Logout</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : (
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   onClick={() => onNavigate('login')}
@@ -131,21 +189,9 @@ export function Navbar({
                   <span>Login</span>
                 </Button>
               </motion.div>
-            ) : (
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  onClick={onLogout}
-                  variant="ghost"
-                  size="sm"
-                  className="hidden sm:flex items-center space-x-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
-                </Button>
-              </motion.div>
             )}
 
-            {/* Mobile Menu Button (you can later expand this into a full drawer) */}
+            {/* Mobile Menu Button */}
             <motion.button
               className="md:hidden p-2 hover:bg-secondary/50 rounded-lg transition-colors"
               aria-label="Menu"

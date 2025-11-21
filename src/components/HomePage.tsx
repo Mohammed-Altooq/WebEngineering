@@ -8,11 +8,13 @@ import { ProductCard } from './ProductCard';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { motion } from 'framer-motion';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 interface HomePageProps {
   onNavigate: (page: string, productId?: string) => void;
   onAddToCart: (product: any) => void;
+  /** Current logged in user - if null, user is not logged in */
+  currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
 }
 
 type CategoryIcon = typeof Leaf;
@@ -23,9 +25,13 @@ interface CategoryInfo {
   color: string;
 }
 
-export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
+export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps) {
   const [sellerCount, setSellerCount] = useState<number | null>(null);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
+
+  // ONLY show cart functionality for customers, not sellers
+  const canAddToCart = currentUser && currentUser.role === 'customer';
+  const isSeller = currentUser?.role === 'seller';
 
   // --- Load sellers for the "150+ Local Sellers" card ---
   useEffect(() => {
@@ -214,23 +220,25 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                     className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30 transition-all"
                     onClick={() => onNavigate('products')}
                   >
-                    Shop Now
+                    {isSeller ? 'Browse Products' : 'Shop Now'}
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 </motion.div>
-                <motion.div
-                  whileHover={{ scale: 1.05, y: -2 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="hover:bg-primary/5 transition-all"
-                    onClick={() => onNavigate('login')}
+                {!isSeller && (
+                  <motion.div
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    whileTap={{ scale: 0.95 }}
                   >
-                    Become a Seller
-                  </Button>
-                </motion.div>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="hover:bg-primary/5 transition-all"
+                      onClick={() => onNavigate('login')}
+                    >
+                      Become a Seller
+                    </Button>
+                  </motion.div>
+                )}
               </motion.div>
             </motion.div>
 
@@ -285,7 +293,7 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
         </div>
       </section>
 
-      {/* Categories - now driven by DB categories */}
+      {/* Categories */}
       <section className="py-16 px-4">
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -305,7 +313,6 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
             {(categories.length > 0
               ? categories
               : [
-                  // fallback while loading / if no categories found
                   { name: 'Fresh Produce', icon: Leaf, color: 'bg-olive-green' },
                   { name: 'Handmade Crafts', icon: Package, color: 'bg-deep-terracotta' },
                   { name: 'Dairy Products', icon: Package, color: 'bg-primary' },
@@ -372,6 +379,14 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">
+            <style>{`
+              .featured-products img {
+                max-height: 200px !important;
+                height: 200px !important;
+                object-fit: cover !important;
+                width: 100% !important;
+              }
+            `}</style>
             {featuredProducts.map((product, index) => (
               <motion.div
                 key={product.id}
@@ -379,15 +394,17 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.15 }}
+                className="featured-products"
               >
                 <ProductCard
                   product={product}
-                  // keep your existing callbacks here
                   onViewDetails={(id: string) => onNavigate('product-details', id)}
-                  onAddToCart={onAddToCart}
+                  onAddToCart={canAddToCart ? onAddToCart : undefined}
                   onViewSeller={(sellerId: string) =>
                     onNavigate('seller-profile', sellerId)
                   }
+                  isLoggedIn={!!currentUser}
+                  showAddToCart={!isSeller} // HIDE CART FOR SELLERS
                 />
               </motion.div>
             ))}
@@ -420,9 +437,10 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
               },
               {
                 step: '02',
-                title: 'Add to Cart',
-                description:
-                  'Select your favorite items and add them to your cart. Shop from multiple sellers.',
+                title: isSeller ? 'Manage Inventory' : 'Add to Cart',
+                description: isSeller 
+                  ? 'Manage your products and connect with customers in your community.'
+                  : 'Select your favorite items and add them to your cart. Shop from multiple sellers.',
                 icon: Package,
               },
               {
@@ -537,41 +555,43 @@ export function HomePage({ onNavigate, onAddToCart }: HomePageProps) {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-16 px-4">
-        <div className="max-w-4xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            whileHover={{ scale: 1.02 }}
-          >
-            <Card className="bg-gradient-to-r from-primary to-olive-green text-white p-12 text-center border-0 shadow-2xl shadow-primary/20">
-              <h2 className="font-['Poppins'] text-3xl mb-4">
-                Ready to Start Selling?
-              </h2>
-              <p className="mb-8 text-white/90 max-w-2xl mx-auto">
-                Join our community of local farmers and artisans. Share your
-                products with customers who value quality and sustainability.
-              </p>
-              <motion.div
-                whileHover={{ scale: 1.05, y: -2 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button
-                  size="lg"
-                  className="bg-white text-primary hover:bg-white/90 shadow-lg"
-                  onClick={() => onNavigate('login')}
+      {/* CTA Section - Only show for non-sellers */}
+      {!isSeller && (
+        <section className="py-16 px-4">
+          <div className="max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              whileHover={{ scale: 1.02 }}
+            >
+              <Card className="bg-gradient-to-r from-primary to-olive-green text-white p-12 text-center border-0 shadow-2xl shadow-primary/20">
+                <h2 className="font-['Poppins'] text-3xl mb-4">
+                  Ready to Start Selling?
+                </h2>
+                <p className="mb-8 text-white/90 max-w-2xl mx-auto">
+                  Join our community of local farmers and artisans. Share your
+                  products with customers who value quality and sustainability.
+                </p>
+                <motion.div
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  Register as Seller
-                  <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
-              </motion.div>
-            </Card>
-          </motion.div>
-        </div>
-      </section>
+                  <Button
+                    size="lg"
+                    className="bg-white text-primary hover:bg-white/90 shadow-lg"
+                    onClick={() => onNavigate('login')}
+                  >
+                    Register as Seller
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
+                </motion.div>
+              </Card>
+            </motion.div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

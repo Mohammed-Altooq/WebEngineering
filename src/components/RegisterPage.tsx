@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { Card } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 interface RegisteredUser {
   id: string;
@@ -26,31 +26,115 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Validation functions
+  const validateName = (name: string): string | null => {
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
+      return 'Name must be at least 2 characters long';
+    }
+    if (trimmedName.length > 50) {
+      return 'Name must be less than 50 characters';
+    }
+    if (!/^[a-zA-Z\s'-]+$/.test(trimmedName)) {
+      return 'Name can only contain letters, spaces, hyphens, and apostrophes';
+    }
+    return null;
+  };
+
+  const validateEmail = (email: string): string | null => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      return 'Email is required';
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      return 'Please enter a valid email address';
+    }
+    if (trimmedEmail.length > 100) {
+      return 'Email must be less than 100 characters';
+    }
+    return null;
+  };
+
+  const validatePassword = (password: string): string | null => {
+    if (password.length < 6) {
+      return 'Password must be at least 6 characters long';
+    }
+    if (password.length > 128) {
+      return 'Password must be less than 128 characters';
+    }
+    if (!/(?=.*[a-zA-Z])/.test(password)) {
+      return 'Password must contain at least one letter';
+    }
+    return null;
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     setLoading(true);
 
     try {
+      // Comprehensive validation
+      const nameError = validateName(name);
+      if (nameError) {
+        setError(nameError);
+        return;
+      }
+
+      const emailError = validateEmail(email);
+      if (emailError) {
+        setError(emailError);
+        return;
+      }
+
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        setError(passwordError);
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+
       const role: 'customer' | 'seller' = userType;
 
       const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ 
+          name: name.trim(), 
+          email: email.trim().toLowerCase(), 
+          password, 
+          role 
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || 'Failed to register');
+        // Handle specific error cases
+        if (res.status === 400 && data.error?.includes('already exists')) {
+          setError('An account with this email already exists. Please use a different email or try logging in.');
+        } else {
+          setError(data.error || 'Failed to register. Please try again.');
+        }
         return;
       }
 
+      // Show success message
+      setSuccess(`Welcome ${data.name}! Your account has been created successfully.`);
+
+      // Auto-login the user
       onLogin({
         id: data.id,
         name: data.name,
@@ -58,14 +142,28 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
         email: data.email,
       });
 
-      if (role === 'seller') {
-        onNavigate('seller-dashboard');
-      } else {
-        onNavigate('home');
-      }
+      // Clear form
+      setName('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+
+      // Navigate to appropriate page after a short delay
+      setTimeout(() => {
+        if (role === 'seller') {
+          onNavigate('seller-dashboard');
+        } else {
+          onNavigate('home');
+        }
+      }, 1500);
+
     } catch (err) {
       console.error('Register error:', err);
-      setError('Something went wrong. Please try again.');
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        setError('Unable to connect to server. Please check your internet connection and try again.');
+      } else {
+        setError('Something went wrong. Please try again later.');
+      }
     } finally {
       setLoading(false);
     }
@@ -75,7 +173,7 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
     <div className="min-h-screen bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="grid md:grid-cols-2 gap-12 items-center">
-          {/* Left Side - Branding (same as login) */}
+          {/* Left Side - Branding */}
           <div className="space-y-6">
             <div className="flex items-center space-x-3">
               <div className="bg-primary rounded-full p-3">
@@ -129,6 +227,7 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
               onValueChange={(value) => {
                 setUserType(value as 'customer' | 'seller');
                 setError(null);
+                setSuccess(null);
               }}
             >
               <TabsList className="grid w-full grid-cols-2 mb-6">
@@ -144,9 +243,15 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                   </div>
 
                   {error && (
-                    <p className="text-sm text-red-500 text-center mb-2">
+                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
                       {error}
-                    </p>
+                    </div>
+                  )}
+
+                  {success && (
+                    <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                      {success}
+                    </div>
                   )}
 
                   <div className="space-y-2">
@@ -154,10 +259,12 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                     <Input
                       id="customer-name"
                       type="text"
-                      placeholder="Your name"
+                      placeholder="Your full name"
                       className="bg-input-background"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
+                      disabled={loading}
+                      maxLength={50}
                       required
                     />
                   </div>
@@ -171,6 +278,8 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                       className="bg-input-background"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      maxLength={100}
                       required
                     />
                   </div>
@@ -180,10 +289,29 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                     <Input
                       id="customer-password"
                       type="password"
-                      placeholder="Create a password"
+                      placeholder="Create a password (min. 6 characters)"
                       className="bg-input-background"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      disabled={loading}
+                      minLength={6}
+                      maxLength={128}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="customer-confirm-password">Confirm Password</Label>
+                    <Input
+                      id="customer-confirm-password"
+                      type="password"
+                      placeholder="Confirm your password"
+                      className="bg-input-background"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      disabled={loading}
+                      minLength={6}
+                      maxLength={128}
                       required
                     />
                   </div>
@@ -191,9 +319,9 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                   <Button
                     type="submit"
                     className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading}
+                    disabled={loading || success !== null}
                   >
-                    {loading ? 'Creating account...' : 'Create Account'}
+                    {loading ? 'Creating account...' : success ? 'Account created!' : 'Create Account'}
                   </Button>
 
                   <div className="text-center pt-4">
@@ -203,6 +331,7 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                         type="button"
                         className="text-primary hover:underline"
                         onClick={() => onNavigate('login')}
+                        disabled={loading}
                       >
                         Login here
                       </button>
@@ -219,9 +348,15 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                   </div>
 
                   {error && (
-                    <p className="text-sm text-red-500 text-center mb-2">
+                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
                       {error}
-                    </p>
+                    </div>
+                  )}
+
+                  {success && (
+                    <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                      {success}
+                    </div>
                   )}
 
                   <div className="space-y-2">
@@ -229,10 +364,12 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                     <Input
                       id="seller-name"
                       type="text"
-                      placeholder="Your shop name"
+                      placeholder="Your business name"
                       className="bg-input-background"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
+                      disabled={loading}
+                      maxLength={50}
                       required
                     />
                   </div>
@@ -246,6 +383,8 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                       className="bg-input-background"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      maxLength={100}
                       required
                     />
                   </div>
@@ -255,10 +394,29 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                     <Input
                       id="seller-password"
                       type="password"
-                      placeholder="Create a password"
+                      placeholder="Create a password (min. 6 characters)"
                       className="bg-input-background"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      disabled={loading}
+                      minLength={6}
+                      maxLength={128}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="seller-confirm-password">Confirm Password</Label>
+                    <Input
+                      id="seller-confirm-password"
+                      type="password"
+                      placeholder="Confirm your password"
+                      className="bg-input-background"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      disabled={loading}
+                      minLength={6}
+                      maxLength={128}
                       required
                     />
                   </div>
@@ -266,9 +424,9 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                   <Button
                     type="submit"
                     className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading}
+                    disabled={loading || success !== null}
                   >
-                    {loading ? 'Submitting...' : 'Apply as Seller'}
+                    {loading ? 'Submitting...' : success ? 'Account created!' : 'Apply as Seller'}
                   </Button>
 
                   <div className="text-center pt-4">
@@ -278,6 +436,7 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
                         type="button"
                         className="text-primary hover:underline"
                         onClick={() => onNavigate('login')}
+                        disabled={loading}
                       >
                         Login here
                       </button>

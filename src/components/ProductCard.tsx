@@ -1,143 +1,238 @@
-import { useEffect, useState } from 'react';
-import { Star } from 'lucide-react';
-import { Card, CardContent, CardFooter } from './ui/card';
+import { Star, ShoppingCart, User } from 'lucide-react';
 import { Button } from './ui/button';
-import type { Product } from '../components/ProductListingPage';
+import { Card } from './ui/card';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  category?: string;
+  image?: string;
+  description?: string;
+  sellerId?: string;
+  sellerName?: string;
+  stock?: number;
+  rating?: number;
+}
+
+interface User {
+  id: string;
+  name: string;
+  role: 'customer' | 'seller';
+  email: string;
+}
 
 interface ProductCardProps {
   product: Product;
-  onClick: () => void;
-  onAddToCart: () => void;
-
-  // NEW: to hide Add to Cart
-  isLoggedIn: boolean;
+  onClick?: () => void;
+  onAddToCart?: () => void;
+  onViewDetails?: (id: string) => void;
+  onViewSeller?: (sellerId: string) => void;
+  showAddToCart?: boolean;
+  currentUser?: User | null;
+  isLoggedIn?: boolean;
+  onNavigate?: (page: string) => void;
 }
 
-export function ProductCard({ product, onClick, onAddToCart, isLoggedIn }: ProductCardProps) {
-  const [reviewCount, setReviewCount] = useState<number | null>(null);
-  const [avgRating, setAvgRating] = useState<number | null>(null);
-
-  // 👇 Your original exact height — untouched
-  const IMAGE_HEIGHT = "430px";
-
-  useEffect(() => {
-    async function loadReviews() {
-      try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/products/${product.id}/reviews`
-        );
-        if (!res.ok) return;
-
-        const reviews: { rating?: number }[] = await res.json();
-        setReviewCount(reviews.length);
-
-        if (reviews.length > 0) {
-          const total = reviews.reduce(
-            (sum, r) => sum + (r.rating ?? 0),
-            0
-          );
-          setAvgRating(total / reviews.length);
-        }
-      } catch (err) {
-        console.error('Error loading reviews:', err);
-      }
+export function ProductCard({
+  product,
+  onClick,
+  onAddToCart,
+  onViewDetails,
+  onViewSeller,
+  showAddToCart = true,
+  currentUser,
+  isLoggedIn,
+  onNavigate,
+}: ProductCardProps) {
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (onViewDetails) {
+      onViewDetails(product.id);
     }
+  };
 
-    loadReviews();
-  }, [product.id]);
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    if (onAddToCart) {
+      onAddToCart();
+    }
+  };
 
-  const ratingToShow = avgRating ?? product.rating ?? 0;
-  const reviewCountToShow = reviewCount ?? 0;
-  const stockLabel =
-    typeof product.stock === 'number'
-      ? product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'
-      : '';
-
-  const categoryLabel =
-    product.category?.trim().length ? product.category : 'Category';
+  const handleViewSeller = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    if (onViewSeller && product.sellerId) {
+      onViewSeller(product.sellerId);
+    }
+  };
 
   return (
-    <Card
-      className="
-        group flex flex-col overflow-hidden rounded-2xl border bg-white
-        shadow-sm hover:shadow-md hover:-translate-y-1
-        transition-all duration-200 cursor-pointer
-      "
+    <Card 
+      className="group cursor-pointer hover:shadow-lg transition-all duration-300 overflow-hidden"
+      onClick={handleCardClick}
     >
-      {/* TOP (CLICKABLE AREA) */}
-      <div onClick={onClick} className="flex-1 flex flex-col">
+      {/* Product Image */}
+      <div className="relative h-48 bg-gray-100 overflow-hidden">
+        {product.image ? (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-400">
+            No Image
+          </div>
+        )}
         
-        {/* SINGLE UNIFIED IMAGE BLOCK */}
-        <div
-          className="w-full overflow-hidden bg-muted"
-          style={{ height: IMAGE_HEIGHT }}   // ⬅ your original dimension
-        >
-          {product.image ? (
-            <img
-              src={product.image}
-              alt={product.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                transition: 'transform 0.3s ease',
-              }}
-              className="group-hover:scale-105"
-            />
-          ) : (
-            <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
-              No Image
+        {/* Stock badge */}
+        {product.stock !== undefined && product.stock <= 5 && product.stock > 0 && (
+          <div className="absolute top-2 right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded">
+            Only {product.stock} left
+          </div>
+        )}
+        
+        {/* Out of stock badge */}
+        {product.stock === 0 && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span className="bg-red-500 text-white px-3 py-1 rounded text-sm font-medium">
+              Out of Stock
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Product Details */}
+      <div className="p-4 space-y-3">
+        {/* Product Name */}
+        <h3 className="font-medium text-gray-900 line-clamp-2 group-hover:text-primary transition-colors">
+          {product.name}
+        </h3>
+
+        {/* Category */}
+        {product.category && (
+          <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">
+            {product.category}
+          </span>
+        )}
+
+        {/* Rating */}
+        {product.rating && (
+          <div className="flex items-center space-x-1">
+            <div className="flex space-x-1">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  className={`w-3 h-3 ${
+                    i < Math.floor(product.rating!)
+                      ? 'fill-yellow-400 text-yellow-400'
+                      : 'text-gray-300'
+                  }`}
+                />
+              ))}
             </div>
+            <span className="text-xs text-gray-500">
+              ({product.rating})
+            </span>
+          </div>
+        )}
+
+        {/* Seller Info */}
+        {product.sellerName && (
+          <button
+            onClick={handleViewSeller}
+            className="flex items-center space-x-1 text-sm text-gray-600 hover:text-primary transition-colors"
+          >
+            <User className="w-3 h-3" />
+            <span>by {product.sellerName}</span>
+          </button>
+        )}
+
+        {/* Price */}
+        <div className="flex items-center justify-between">
+          <span className="text-lg font-bold text-primary">
+            BD {product.price.toFixed(3)}
+          </span>
+          
+          {/* Stock info */}
+          {product.stock !== undefined && product.stock > 5 && (
+            <span className="text-xs text-green-600 font-medium">
+              In Stock ({product.stock})
+            </span>
           )}
         </div>
 
-        {/* CONTENT */}
-        <CardContent className="p-4 space-y-3 flex-1 flex flex-col">
-
-          <h3 className="font-semibold text-base md:text-lg line-clamp-2 leading-snug">
-            {product.name}
-          </h3>
-
-          <div className="flex items-center gap-1 text-xs md:text-sm text-muted-foreground">
-            <Star className="h-4 w-4 fill-current text-yellow-500" />
-            <span>{ratingToShow.toFixed(1)}</span>
-            <span>•</span>
-            <span>{reviewCountToShow} reviews</span>
-          </div>
-
-          <div className="text-lg md:text-xl font-bold">
-            {product.price.toFixed(2)} BHD
-          </div>
-
-          <div className="flex items-center justify-between text-xs md:text-sm mt-auto">
-            <span
-              className="inline-flex items-center rounded-full px-2 py-0.5 font-medium"
-              style={{ backgroundColor: '#FDE68A', color: '#92400E' }}
+        {/* Action Buttons - FIXED TO USE isLoggedIn LIKE PRODUCT DETAILS */}
+        <div className="flex gap-2 pt-2">
+          {/* Add to Cart Button - Show ONLY if user is logged in AND has onAddToCart function */}
+          {isLoggedIn && onAddToCart && product.stock !== 0 && (
+            <Button
+              onClick={handleAddToCart}
+              className="flex-1 bg-primary hover:bg-primary/90 text-white"
+              size="sm"
             >
-              {categoryLabel}
-            </span>
-            {stockLabel && <span className="text-muted-foreground">{stockLabel}</span>}
-          </div>
+              <ShoppingCart className="w-4 h-4 mr-1" />
+              Add to Cart
+            </Button>
+          )}
 
-        </CardContent>
-      </div>
+          {/* Login Button - Show ONLY if user is NOT logged in */}
+          {!isLoggedIn && (
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onNavigate) {
+                  onNavigate('login');
+                }
+              }}
+              variant="outline"
+              className="flex-1 border-primary text-primary hover:bg-primary/5"
+              size="sm"
+            >
+              Login to Add
+            </Button>
+          )}
 
-      {/* ADD TO CART */}
-      <CardFooter className="p-4 pt-0 mt-auto">
+          {/* Seller Account - Show if logged in but no onAddToCart (seller) */}
+          {isLoggedIn && !onAddToCart && (
+            <Button
+              disabled
+              variant="outline"
+              className="flex-1"
+              size="sm"
+            >
+              Seller Account
+            </Button>
+          )}
 
-        {isLoggedIn ? (
-          <Button className="w-full" size="sm" onClick={onAddToCart}>
-            Add to cart
-          </Button>
-        ) : (
-          <Button className="w-full opacity-60 cursor-not-allowed" disabled>
-            Login to add
-          </Button>
+          {/* Out of Stock */}
+          {product.stock === 0 && (
+            <Button
+              disabled
+              variant="outline"
+              className="flex-1"
+              size="sm"
+            >
+              Out of Stock
+            </Button>
+          )}
+
+  
+        </div>
+
+        {/* User Status Message - UPDATED TO USE isLoggedIn */}
+        {!isLoggedIn && (
+          <p className="text-xs text-center text-gray-500 pt-1">
+            Login as customer to add items to cart
+          </p>
         )}
-
-      </CardFooter>
+        {isLoggedIn && !onAddToCart && (
+          <p className="text-xs text-center text-gray-500 pt-1">
+            Seller accounts cannot purchase items
+          </p>
+        )}
+      </div>
     </Card>
   );
 }

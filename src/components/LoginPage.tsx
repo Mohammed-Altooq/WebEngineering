@@ -6,29 +6,104 @@ import { Label } from './ui/label';
 import { Card } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
 type UserType = 'customer' | 'seller';
+
+interface RegisteredUser {
+  id: string;
+  name: string;
+  role: 'customer' | 'seller';
+  email: string;
+}
 
 interface LoginPageProps {
   onNavigate: (page: string) => void;
-  onLogin: (userType: UserType) => void;  // 🔥 NEW
+  onLogin: (user: RegisteredUser) => void;
 }
 
 export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
   const [userType, setUserType] = useState<UserType>('customer');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setLoading(true);
 
-    // here you can later add real validation / API
-    onLogin(userType); // 🔥 tell parent "I am customer/seller"
+    // Basic validation
+    if (!email.trim() || !password.trim()) {
+      setError('Please fill in all fields');
+      setLoading(false);
+      return;
+    }
 
-    if (userType === 'seller') {
-      onNavigate('seller-dashboard');
-    } else {
-      onNavigate('home');
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: email.trim().toLowerCase(), 
+          password 
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Login failed');
+        return;
+      }
+
+      // Check if user role matches selected tab
+      if (data.role !== userType) {
+        setError(`This account is registered as a ${data.role}, not a ${userType}. Please select the correct login type.`);
+        return;
+      }
+
+      // Login successful
+      onLogin({
+        id: data.id,
+        name: data.name,
+        role: data.role,
+        email: data.email,
+      });
+
+      // Clear form
+      setEmail('');
+      setPassword('');
+
+      // Navigate based on role
+      if (data.role === 'seller') {
+        onNavigate('seller-dashboard');
+      } else {
+        onNavigate('home');
+      }
+
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Something went wrong. Please check your internet connection and try again.');
+    } finally {
+      setLoading(false);
     }
   };
-
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream py-12 px-4">
@@ -83,7 +158,13 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
 
           {/* Right Side - Login Form */}
           <Card className="p-8 bg-white border border-border shadow-xl">
-            <Tabs defaultValue="customer" onValueChange={(value) => setUserType(value as 'customer' | 'seller')}>
+            <Tabs 
+              defaultValue="customer" 
+              onValueChange={(value) => {
+                setUserType(value as 'customer' | 'seller');
+                setError(null); // Clear error when switching tabs
+              }}
+            >
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="customer">Customer</TabsTrigger>
                 <TabsTrigger value="seller">Seller</TabsTrigger>
@@ -96,6 +177,12 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                     <p className="text-sm text-foreground/70">Sign in to start shopping</p>
                   </div>
 
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                      {error}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="customer-email">Email Address</Label>
                     <Input 
@@ -103,6 +190,10 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                       type="email" 
                       placeholder="your@email.com"
                       className="bg-input-background"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      required
                     />
                   </div>
 
@@ -113,6 +204,11 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                       type="password" 
                       placeholder="Enter your password"
                       className="bg-input-background"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={loading}
+                      minLength={6}
+                      required
                     />
                   </div>
 
@@ -124,21 +220,25 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                     <a href="#" className="text-primary hover:underline">Forgot password?</a>
                   </div>
 
-                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
-                    Sign In
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-primary hover:bg-primary/90"
+                    disabled={loading}
+                  >
+                    {loading ? 'Signing in...' : 'Sign In'}
                   </Button>
 
                   <div className="text-center pt-4">
                     <p className="text-sm text-foreground/70">
                       Don't have an account?{' '}
                       <button
-  type="button"
-  onClick={() => onNavigate("register")}
-  className="text-primary hover:underline"
->
-  Register here
-</button>
-
+                        type="button"
+                        onClick={() => onNavigate("register")}
+                        className="text-primary hover:underline"
+                        disabled={loading}
+                      >
+                        Register here
+                      </button>
                     </p>
                   </div>
 
@@ -148,6 +248,7 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                       variant="outline" 
                       className="w-full"
                       onClick={() => onNavigate('products')}
+                      disabled={loading}
                     >
                       Continue as Guest
                     </Button>
@@ -162,6 +263,12 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                     <p className="text-sm text-foreground/70">Access your seller dashboard</p>
                   </div>
 
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                      {error}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="seller-email">Email Address</Label>
                     <Input 
@@ -169,6 +276,10 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                       type="email" 
                       placeholder="seller@email.com"
                       className="bg-input-background"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      required
                     />
                   </div>
 
@@ -179,6 +290,11 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                       type="password" 
                       placeholder="Enter your password"
                       className="bg-input-background"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={loading}
+                      minLength={6}
+                      required
                     />
                   </div>
 
@@ -190,21 +306,25 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
                     <a href="#" className="text-primary hover:underline">Forgot password?</a>
                   </div>
 
-                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
-                    Sign In to Dashboard
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-primary hover:bg-primary/90"
+                    disabled={loading}
+                  >
+                    {loading ? 'Signing in...' : 'Sign In to Dashboard'}
                   </Button>
 
                   <div className="text-center pt-4">
                     <p className="text-sm text-foreground/70">
                       New seller?{' '}
                       <button
-  type="button"
-  onClick={() => onNavigate("register")}
-  className="text-primary hover:underline"
->
-  Apply to Sell
-</button>
-
+                        type="button"
+                        onClick={() => onNavigate("register")}
+                        className="text-primary hover:underline"
+                        disabled={loading}
+                      >
+                        Apply to Sell
+                      </button>
                     </p>
                   </div>
 

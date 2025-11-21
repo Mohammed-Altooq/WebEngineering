@@ -7,7 +7,7 @@ import { Card } from './ui/card';
 import { ProductCard } from './ProductCard';
 
 // ---- API base ----
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 export interface Product {
   id: string;
@@ -24,15 +24,18 @@ export interface Product {
 
 interface ProductListingPageProps {
   onNavigate: (page: string, productIdOrCategory?: string) => void;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product) => void; // This expects a Product parameter
   /** Optional category coming from the HomePage (when user clicks a category card) */
   initialCategory?: string;
+  /** Current logged in user - if null, user is not logged in */
+  currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
 }
 
 export function ProductListingPage({
   onNavigate,
   onAddToCart,
   initialCategory = 'all',
+  currentUser,
 }: ProductListingPageProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +47,9 @@ export function ProductListingPage({
     initialCategory || 'all'
   );
   const [sortBy, setSortBy] = useState<string>('default');
+
+  // ONLY ADDITION - Check if user can add to cart
+  const canAddToCart = currentUser && currentUser.role === 'customer';
 
   // ---------------------------
   // Load products from backend
@@ -175,13 +181,25 @@ export function ProductListingPage({
 
       {!loading && !error && filtered.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <style>{`
+            .product-grid img {
+              max-height: 200px !important;
+              height: 200px !important;
+              object-fit: cover !important;
+              width: 100% !important;
+            }
+          `}</style>
           {filtered.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onClick={() => onNavigate('product-details', product.id)}
-              onAddToCart={() => onAddToCart(product)}
-            />
+            <div key={product.id} className="product-grid">
+              <ProductCard
+                product={product}
+                onClick={() => onNavigate('product-details', product.id)}
+                // FIX: Pass the product to onAddToCart, not just call it
+                onAddToCart={canAddToCart ? () => onAddToCart(product) : undefined}
+                isLoggedIn={!!currentUser}
+                onNavigate={onNavigate}
+              />
+            </div>
           ))}
         </div>
       )}
