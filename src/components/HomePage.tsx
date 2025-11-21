@@ -29,6 +29,7 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
   const [topRated, setTopRated] = useState<any[]>([]);
   const [sellerCount, setSellerCount] = useState<number | null>(null);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
+  const [searchTerm, setSearchTerm] = useState(''); // 👈 NEW: search state
 
   // ONLY show cart functionality for customers, not sellers
   const canAddToCart = currentUser && currentUser.role === 'customer';
@@ -115,29 +116,38 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
     loadCategories();
   }, []);
 
-// --- Load top 3 highest-rated products from DB ---
-useEffect(() => {
-  async function loadTopRated() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/products`);
-      const data = await res.json();
+  // --- Load top 3 highest-rated products from DB ---
+  useEffect(() => {
+    async function loadTopRated() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/products`);
+        const data = await res.json();
 
-      // Sort by rating (highest → lowest)
-      const sorted = [...data].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        // Sort by rating (highest → lowest)
+        const sorted = [...data].sort((a, b) => (b.rating || 0) - (a.rating || 0));
 
-      // Take top 3
-      setTopRated(sorted.slice(0, 3));
-    } catch (err) {
-      console.error("Error loading top rated products:", err);
+        // Take top 3
+        setTopRated(sorted.slice(0, 3));
+      } catch (err) {
+        console.error("Error loading top rated products:", err);
+      }
     }
-  }
 
-  loadTopRated();
-}, []);
-
+    loadTopRated();
+  }, []);
 
   const featuredProducts = topRated.length > 0 ? topRated : products.slice(0, 3);
 
+  // 👇 NEW: central search handler
+  const handleSearch = () => {
+    const q = searchTerm.trim();
+    if (!q) {
+      onNavigate('products'); // if empty, just go to products
+      return;
+    }
+    // if your App/ProductListing support it, this will pass the query
+    onNavigate('products', `search:${q}`);
+  };
 
   return (
     <div className="min-h-screen">
@@ -216,12 +226,17 @@ useEffect(() => {
                   <Input
                     placeholder="Search for products..."
                     className="pl-10 h-12 bg-white border-border transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    value={searchTerm}                             // 👈 NEW
+                    onChange={(e) => setSearchTerm(e.target.value)} // 👈 NEW
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSearch();        // 👈 press Enter to search
+                    }}
                   />
                 </div>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
                     className="h-12 px-6 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
-                    onClick={() => onNavigate('products')}
+                    onClick={handleSearch} // 👈 was onNavigate('products')
                   >
                     Search
                   </Button>

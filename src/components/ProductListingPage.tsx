@@ -25,7 +25,7 @@ export interface Product {
 interface ProductListingPageProps {
   onNavigate: (page: string, productIdOrCategory?: string) => void;
   onAddToCart: (product: Product) => void; // This expects a Product parameter
-  /** Optional category coming from the HomePage (when user clicks a category card) */
+  /** Optional category coming from the HomePage (when user clicks a category card or search) */
   initialCategory?: string;
   /** Current logged in user - if null, user is not logged in */
   currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
@@ -41,15 +41,36 @@ export function ProductListingPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  // seed the filter with the category coming from HomePage
-  const [selectedCategory, setSelectedCategory] = useState<string>(
-    initialCategory || 'all'
-  );
+  // 👉 Seed search/category from initialCategory
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (initialCategory && initialCategory.startsWith('search:')) {
+      return initialCategory.slice('search:'.length);
+    }
+    return '';
+  });
+
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    if (initialCategory && initialCategory.startsWith('search:')) {
+      return 'all';
+    }
+    return initialCategory || 'all';
+  });
+
   const [sortBy, setSortBy] = useState<string>('default');
 
   // ONLY ADDITION - Check if user can add to cart
   const canAddToCart = currentUser && currentUser.role === 'customer';
+
+  // Keep filters in sync if initialCategory changes while we're on this page
+  useEffect(() => {
+    if (initialCategory && initialCategory.startsWith('search:')) {
+      setSearchQuery(initialCategory.slice('search:'.length));
+      setSelectedCategory('all');
+    } else {
+      setSelectedCategory(initialCategory || 'all');
+      // don't override searchQuery here, only category
+    }
+  }, [initialCategory]);
 
   // ---------------------------
   // Load products from backend
@@ -119,7 +140,7 @@ export function ProductListingPage({
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              />
+            />
           </div>
 
           {/* Category */}
@@ -156,7 +177,6 @@ export function ProductListingPage({
             </SelectContent>
           </Select>
 
-        
         </div>
       </div>
 
