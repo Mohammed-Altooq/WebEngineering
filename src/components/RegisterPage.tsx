@@ -18,10 +18,17 @@ interface RegisteredUser {
 interface RegisterPageProps {
   onNavigate: (page: string) => void;
   onLogin: (user: RegisteredUser) => void;
+  isLoggedIn?: boolean;
+  currentUserRole?: 'customer' | 'seller';
 }
 
-export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
-  const [userType, setUserType] = useState<'customer' | 'seller'>('customer');
+export function RegisterPage({ 
+  onNavigate, 
+  onLogin, 
+  isLoggedIn = false, 
+  currentUserRole 
+}: RegisterPageProps) {
+  const [userType, setUserType] = useState<'customer' | 'seller'>('seller'); // Default to seller for customers
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -106,7 +113,8 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
         return;
       }
 
-      const role: 'customer' | 'seller' = userType;
+      // If customer is logged in, force seller role
+      const role: 'customer' | 'seller' = (isLoggedIn && currentUserRole === 'customer') ? 'seller' : userType;
 
       const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
@@ -222,236 +230,336 @@ export function RegisterPage({ onNavigate, onLogin }: RegisterPageProps) {
 
           {/* Right Side - Register Form */}
           <Card className="p-8 bg-white border border-border shadow-xl">
-            <Tabs
-              defaultValue="customer"
-              onValueChange={(value) => {
-                setUserType(value as 'customer' | 'seller');
-                setError(null);
-                setSuccess(null);
-              }}
-            >
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="customer">Customer</TabsTrigger>
-                <TabsTrigger value="seller">Seller</TabsTrigger>
-              </TabsList>
+            {/* IF STATEMENT: Check user status */}
+            {isLoggedIn && currentUserRole === 'customer' ? (
+              /* CUSTOMER LOGGED IN - ONLY SELLER FORM */
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div className="text-center mb-6">
+                  <h2 className="font-['Poppins'] text-2xl mb-2">Become a Seller</h2>
+                  <p className="text-sm text-foreground/70">Upgrade your account to start selling</p>
+                </div>
 
-              <TabsContent value="customer">
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="text-center mb-6">
-                    <h2 className="font-['Poppins'] text-2xl mb-2">Create Customer Account</h2>
-                    <p className="text-sm text-foreground/70">Start shopping local products</p>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                    {error}
                   </div>
+                )}
 
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
-                      {error}
+                {success && (
+                  <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                    {success}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="seller-name">Business / Seller Name</Label>
+                  <Input
+                    id="seller-name"
+                    type="text"
+                    placeholder="Your business name"
+                    className="bg-input-background"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={loading}
+                    maxLength={50}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="seller-email">Email Address</Label>
+                  <Input
+                    id="seller-email"
+                    type="email"
+                    placeholder="seller@email.com"
+                    className="bg-input-background"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={loading}
+                    maxLength={100}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="seller-password">Password</Label>
+                  <Input
+                    id="seller-password"
+                    type="password"
+                    placeholder="Create a password (min. 6 characters)"
+                    className="bg-input-background"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    minLength={6}
+                    maxLength={128}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="seller-confirm-password">Confirm Password</Label>
+                  <Input
+                    id="seller-confirm-password"
+                    type="password"
+                    placeholder="Confirm your password"
+                    className="bg-input-background"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={loading}
+                    minLength={6}
+                    maxLength={128}
+                    required
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full bg-primary hover:bg-primary/90"
+                  disabled={loading || success !== null}
+                >
+                  {loading ? 'Submitting...' : success ? 'Account created!' : 'Apply as Seller'}
+                </Button>
+
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mt-4">
+                  <p className="text-sm text-foreground/80">
+                    After registering, you can complete your seller profile in the dashboard.
+                  </p>
+                </div>
+              </form>
+            ) : (
+              /* GUEST USER - SHOW BOTH TABS */
+              <Tabs
+                defaultValue="customer"
+                onValueChange={(value) => {
+                  setUserType(value as 'customer' | 'seller');
+                  setError(null);
+                  setSuccess(null);
+                }}
+              >
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="customer">Customer</TabsTrigger>
+                  <TabsTrigger value="seller">Seller</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="customer">
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div className="text-center mb-6">
+                      <h2 className="font-['Poppins'] text-2xl mb-2">Create Customer Account</h2>
+                      <p className="text-sm text-foreground/70">Start shopping local products</p>
                     </div>
-                  )}
 
-                  {success && (
-                    <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
-                      {success}
-                    </div>
-                  )}
+                    {error && (
+                      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                        {error}
+                      </div>
+                    )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-name">Full Name</Label>
-                    <Input
-                      id="customer-name"
-                      type="text"
-                      placeholder="Your full name"
-                      className="bg-input-background"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      disabled={loading}
-                      maxLength={50}
-                      required
-                    />
-                  </div>
+                    {success && (
+                      <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                        {success}
+                      </div>
+                    )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-email">Email Address</Label>
-                    <Input
-                      id="customer-email"
-                      type="email"
-                      placeholder="your@email.com"
-                      className="bg-input-background"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                      maxLength={100}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-password">Password</Label>
-                    <Input
-                      id="customer-password"
-                      type="password"
-                      placeholder="Create a password (min. 6 characters)"
-                      className="bg-input-background"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={loading}
-                      minLength={6}
-                      maxLength={128}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-confirm-password">Confirm Password</Label>
-                    <Input
-                      id="customer-confirm-password"
-                      type="password"
-                      placeholder="Confirm your password"
-                      className="bg-input-background"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      disabled={loading}
-                      minLength={6}
-                      maxLength={128}
-                      required
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading || success !== null}
-                  >
-                    {loading ? 'Creating account...' : success ? 'Account created!' : 'Create Account'}
-                  </Button>
-
-                  <div className="text-center pt-4">
-                    <p className="text-sm text-foreground/70">
-                      Already have an account?{' '}
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => onNavigate('login')}
+                    <div className="space-y-2">
+                      <Label htmlFor="customer-name">Full Name</Label>
+                      <Input
+                        id="customer-name"
+                        type="text"
+                        placeholder="Your full name"
+                        className="bg-input-background"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
                         disabled={loading}
-                      >
-                        Login here
-                      </button>
-                    </p>
-                  </div>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="seller">
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="text-center mb-6">
-                    <h2 className="font-['Poppins'] text-2xl mb-2">Seller Registration</h2>
-                    <p className="text-sm text-foreground/70">Apply to become a seller</p>
-                  </div>
-
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
-                      {error}
+                        maxLength={50}
+                        required
+                      />
                     </div>
-                  )}
 
-                  {success && (
-                    <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
-                      {success}
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="seller-name">Business / Seller Name</Label>
-                    <Input
-                      id="seller-name"
-                      type="text"
-                      placeholder="Your business name"
-                      className="bg-input-background"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      disabled={loading}
-                      maxLength={50}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="seller-email">Email Address</Label>
-                    <Input
-                      id="seller-email"
-                      type="email"
-                      placeholder="seller@email.com"
-                      className="bg-input-background"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                      maxLength={100}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="seller-password">Password</Label>
-                    <Input
-                      id="seller-password"
-                      type="password"
-                      placeholder="Create a password (min. 6 characters)"
-                      className="bg-input-background"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={loading}
-                      minLength={6}
-                      maxLength={128}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="seller-confirm-password">Confirm Password</Label>
-                    <Input
-                      id="seller-confirm-password"
-                      type="password"
-                      placeholder="Confirm your password"
-                      className="bg-input-background"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      disabled={loading}
-                      minLength={6}
-                      maxLength={128}
-                      required
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading || success !== null}
-                  >
-                    {loading ? 'Submitting...' : success ? 'Account created!' : 'Apply as Seller'}
-                  </Button>
-
-                  <div className="text-center pt-4">
-                    <p className="text-sm text-foreground/70">
-                      Already a seller?{' '}
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => onNavigate('login')}
+                    <div className="space-y-2">
+                      <Label htmlFor="customer-email">Email Address</Label>
+                      <Input
+                        id="customer-email"
+                        type="email"
+                        placeholder="your@email.com"
+                        className="bg-input-background"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         disabled={loading}
-                      >
-                        Login here
-                      </button>
-                    </p>
-                  </div>
+                        maxLength={100}
+                        required
+                      />
+                    </div>
 
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mt-4">
-                    <p className="text-sm text-foreground/80">
-                      After registering, you can complete your seller profile in the dashboard:
-                      add a description, contact info, and products.
-                    </p>
-                  </div>
-                </form>
-              </TabsContent>
-            </Tabs>
+                    <div className="space-y-2">
+                      <Label htmlFor="customer-password">Password</Label>
+                      <Input
+                        id="customer-password"
+                        type="password"
+                        placeholder="Create a password (min. 6 characters)"
+                        className="bg-input-background"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={loading}
+                        minLength={6}
+                        maxLength={128}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="customer-confirm-password">Confirm Password</Label>
+                      <Input
+                        id="customer-confirm-password"
+                        type="password"
+                        placeholder="Confirm your password"
+                        className="bg-input-background"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        disabled={loading}
+                        minLength={6}
+                        maxLength={128}
+                        required
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full bg-primary hover:bg-primary/90"
+                      disabled={loading || success !== null}
+                    >
+                      {loading ? 'Creating account...' : success ? 'Account created!' : 'Create Account'}
+                    </Button>
+
+                    <div className="text-center pt-4">
+                      <p className="text-sm text-foreground/70">
+                        Already have an account?{' '}
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          onClick={() => onNavigate('login')}
+                          disabled={loading}
+                        >
+                          Login here
+                        </button>
+                      </p>
+                    </div>
+                  </form>
+                </TabsContent>
+
+                <TabsContent value="seller">
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div className="text-center mb-6">
+                      <h2 className="font-['Poppins'] text-2xl mb-2">Seller Registration</h2>
+                      <p className="text-sm text-foreground/70">Apply to become a seller</p>
+                    </div>
+
+                    {error && (
+                      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                        {error}
+                      </div>
+                    )}
+
+                    {success && (
+                      <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                        {success}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="seller-name">Business / Seller Name</Label>
+                      <Input
+                        id="seller-name"
+                        type="text"
+                        placeholder="Your business name"
+                        className="bg-input-background"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        disabled={loading}
+                        maxLength={50}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="seller-email">Email Address</Label>
+                      <Input
+                        id="seller-email"
+                        type="email"
+                        placeholder="seller@email.com"
+                        className="bg-input-background"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        disabled={loading}
+                        maxLength={100}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="seller-password">Password</Label>
+                      <Input
+                        id="seller-password"
+                        type="password"
+                        placeholder="Create a password (min. 6 characters)"
+                        className="bg-input-background"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={loading}
+                        minLength={6}
+                        maxLength={128}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="seller-confirm-password">Confirm Password</Label>
+                      <Input
+                        id="seller-confirm-password"
+                        type="password"
+                        placeholder="Confirm your password"
+                        className="bg-input-background"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        disabled={loading}
+                        minLength={6}
+                        maxLength={128}
+                        required
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full bg-primary hover:bg-primary/90"
+                      disabled={loading || success !== null}
+                    >
+                      {loading ? 'Submitting...' : success ? 'Account created!' : 'Apply as Seller'}
+                    </Button>
+
+                    <div className="text-center pt-4">
+                      <p className="text-sm text-foreground/70">
+                        Already a seller?{' '}
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          onClick={() => onNavigate('login')}
+                          disabled={loading}
+                        >
+                          Login here
+                        </button>
+                      </p>
+                    </div>
+
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mt-4">
+                      <p className="text-sm text-foreground/80">
+                        After registering, you can complete your seller profile in the dashboard:
+                        add a description, contact info, and products.
+                      </p>
+                    </div>
+                  </form>
+                </TabsContent>
+              </Tabs>
+            )}
           </Card>
         </div>
       </div>

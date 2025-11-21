@@ -12,7 +12,7 @@ import { SellerProfilePage } from './components/SellerProfilePage';
 import { ReviewPage } from './components/ReviewPage';
 import { StyleGuide } from './components/StyleGuide';
 import { CustomerProfile } from './components/customerProfile';
-import { SellerProfile } from './components/sellerProfile';
+import { SellerProfile } from './components/sellerProfile'; 
 import { Product } from './lib/mockData';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
@@ -127,10 +127,10 @@ export default function App() {
 
     const skipScrollToTop = page === 'home' && idOrCategory === 'keepScroll';
 
-  if (!skipScrollToTop) {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-};
+    if (!skipScrollToTop) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleAddToCart = async (product: Product, quantity: number = 1) => {
     console.log('🛒 === ADD TO CART DEBUG ===');
@@ -226,6 +226,8 @@ export default function App() {
           <LoginPage
             onNavigate={handleNavigate}
             onLogin={handleLogin}
+            isLoggedIn={isLoggedIn}           
+            currentUserRole={user?.role}
           />
         );
 
@@ -234,6 +236,8 @@ export default function App() {
           <RegisterPage
             onNavigate={handleNavigate}
             onLogin={handleLogin}
+            isLoggedIn={isLoggedIn}
+            currentUserRole={user?.role}
           />
         );
 
@@ -279,7 +283,7 @@ export default function App() {
 
       case 'seller-dashboard':
         return isSeller ? (
-          <SellerDashboard onNavigate={handleNavigate} />
+          <SellerDashboard onNavigate={handleNavigate} currentUser={user} />
         ) : (
           <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
         );
@@ -290,7 +294,9 @@ export default function App() {
             sellerId={selectedProductId}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            currentUser={user}
           />
+
         );
 
       case 'reviews':
@@ -317,6 +323,7 @@ export default function App() {
           <SellerProfile
             currentUser={user}
             onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
           />
         ) : (
           <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
@@ -357,7 +364,11 @@ export default function App() {
 
       <main>{renderPage()}</main>
 
-      <Footer onNavigate={handleNavigate} />
+      <Footer 
+        onNavigate={handleNavigate}  
+        isLoggedIn={isLoggedIn}
+        currentUserRole={user?.role}
+      />
 
       <Toaster
         position="bottom-right"

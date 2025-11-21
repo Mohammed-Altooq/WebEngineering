@@ -314,13 +314,22 @@ export function ProductDetailsPage({
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-12 h-12">
-                      <ImageWithFallback
-                        src={seller.image}
-                        alt={seller.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <AvatarFallback>{seller.name[0]}</AvatarFallback>
-                    </Avatar>
+  {seller.image ? (
+    <img 
+      src={seller.image} 
+      alt={seller.name}
+      className="w-full h-full object-cover rounded-full"
+      onError={(e) => {
+        // Hide the image if it fails to load
+        (e.target as HTMLImageElement).style.display = 'none';
+      }}
+    />
+  ) : (
+    <AvatarFallback className="bg-primary/10 text-primary">
+      {seller.name[0]?.toUpperCase() || 'U'}
+    </AvatarFallback>
+  )}
+</Avatar>
                     <div>
                       <h3 className="font-['Lato']">{seller.name}</h3>
                       <p className="text-sm text-muted-foreground capitalize">{seller.type}</p>

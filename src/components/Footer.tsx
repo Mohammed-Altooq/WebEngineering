@@ -3,34 +3,37 @@ import { motion } from 'framer-motion';
 
 interface FooterProps {
   onNavigate: (page: string, param?: string) => void;
+  isLoggedIn?: boolean;
+  currentUserRole?: 'customer' | 'seller';
 }
 
-export function Footer({ onNavigate }: FooterProps) {
-  // Quick links config with actions
+export function Footer({ onNavigate, isLoggedIn = false, currentUserRole }: FooterProps) {
+  // Quick links config with conditional "Become a Seller"
   const quickLinks = [
     {
       label: 'About Us',
       onClick: () => onNavigate('about'),
     },
     {
-  label: 'How It Works',
-  onClick: () => {
-    // tell App "go to home, but don't scroll to top"
-    onNavigate('home', 'keepScroll');
+      label: 'How It Works',
+      onClick: () => {
+        // tell App "go to home, but don't scroll to top"
+        onNavigate('home', 'keepScroll');
 
-    // after home renders, smoothly scroll to the section
-    setTimeout(() => {
-      const el = document.getElementById('how-it-works');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 80); // small delay is enough
-  },
-},
-    {
-      label: 'Become a Seller',
-      onClick: () => onNavigate('register'), // or 'login' if you prefer
+        // after home renders, smoothly scroll to the section
+        setTimeout(() => {
+          const el = document.getElementById('how-it-works');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 80); // small delay is enough
+      },
     },
+    // Only show "Become a Seller" if user is NOT already a seller
+    ...(currentUserRole !== 'seller' ? [{
+      label: 'Become a Seller',
+      onClick: () => onNavigate('register'),
+    }] : []),
     {
       label: 'FAQs',
       onClick: () => onNavigate('faqs'),

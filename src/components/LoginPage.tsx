@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Leaf, User, Store } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -20,14 +20,32 @@ interface RegisteredUser {
 interface LoginPageProps {
   onNavigate: (page: string) => void;
   onLogin: (user: RegisteredUser) => void;
+  isLoggedIn?: boolean;
+  currentUserRole?: 'customer' | 'seller';
 }
 
-export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
+export function LoginPage({ 
+  onNavigate, 
+  onLogin, 
+  isLoggedIn = false, 
+  currentUserRole 
+}: LoginPageProps) {
   const [userType, setUserType] = useState<UserType>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Redirect logged-in users to their profile
+  useEffect(() => {
+    if (isLoggedIn && currentUserRole) {
+      if (currentUserRole === 'seller') {
+        onNavigate('seller-dashboard');
+      } else {
+        onNavigate('customer-profile');
+      }
+    }
+  }, [isLoggedIn, currentUserRole, onNavigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +122,18 @@ export function LoginPage({ onNavigate, onLogin }: LoginPageProps) {
       setLoading(false);
     }
   };
+
+  // If user is logged in, don't render the login form (useEffect will handle redirect)
+  if (isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-foreground/70">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream py-12 px-4">

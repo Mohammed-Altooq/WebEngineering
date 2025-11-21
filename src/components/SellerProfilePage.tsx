@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Star, MapPin, Mail, Phone, Package, Award, TrendingUp, ArrowLeft } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -6,45 +7,118 @@ import { Avatar, AvatarFallback } from './ui/avatar';
 import { Separator } from './ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { ProductCard } from './ProductCard';
-import { sellers, products, Product } from '../lib/mockData';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { motion } from 'framer-motion';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 interface SellerProfilePageProps {
   sellerId?: string;
   onNavigate: (page: string, productId?: string) => void;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: any) => void;
+  currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
 }
-export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerProfilePageProps) {
-  const seller = sellers.find(s => s.id === sellerId) || sellers[0];
-  const sellerProducts = products.filter(p => p.sellerId === seller.id);
-  
-  // Mock reviews for the seller
-  const sellerReviews = [
-    {
-      id: '1',
-      customerName: 'Sara Al-Khalifa',
-      rating: 5,
-      comment: 'Amazing quality and excellent customer service! Always fresh products.',
-      date: '2025-10-28',
-      productName: 'Fresh Organic Tomatoes'
-    },
-    {
-      id: '2',
-      customerName: 'Mohammed Hassan',
-      rating: 5,
-      comment: 'Best local seller in Bahrain. Highly recommend!',
-      date: '2025-10-25',
-      productName: 'Organic Mixed Vegetables'
-    },
-    {
-      id: '3',
-      customerName: 'Fatima Ahmed',
-      rating: 4,
-      comment: 'Great products, fast delivery. Will order again.',
-      date: '2025-10-20',
-      productName: 'Fresh Dates Premium'
-    }
-  ];
+
+export function SellerProfilePage({ sellerId, onNavigate, onAddToCart, currentUser }: SellerProfilePageProps) {
+  const [seller, setSeller] = useState<any>(null);
+  const [sellerProducts, setSellerProducts] = useState<any[]>([]);
+  const [sellerReviews, setSellerReviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchSellerData = async () => {
+      if (!sellerId) {
+        setError('No seller ID provided');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // Fetch seller details
+        const sellerResponse = await fetch(`${API_BASE_URL}/api/sellers/${sellerId}`);
+        if (!sellerResponse.ok) throw new Error('Failed to fetch seller');
+        
+        const sellerData = await sellerResponse.json();
+        setSeller(sellerData);
+
+        // Check if current user is this seller - if so, redirect to profile edit page
+        if (currentUser?.role === 'seller' && currentUser.email === sellerData.contactEmail) {
+          onNavigate('seller-profile-edit');
+          return;
+        }
+
+        // Fetch products for this seller
+        const productsResponse = await fetch(`${API_BASE_URL}/api/sellers/${sellerId}/products`);
+        if (productsResponse.ok) {
+          const products = await productsResponse.json();
+          setSellerProducts(products);
+        }
+
+        // Fetch reviews for all products by this seller
+        const reviewsPromises = sellerProducts.map(product => 
+          fetch(`${API_BASE_URL}/api/products/${product.id}/reviews`)
+            .then(res => res.ok ? res.json() : [])
+            .catch(() => [])
+        );
+
+        const allReviews = await Promise.all(reviewsPromises);
+        const flattenedReviews = allReviews.flat();
+        setSellerReviews(flattenedReviews);
+
+      } catch (err) {
+        console.error('Error fetching seller data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load seller data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSellerData();
+  }, [sellerId, currentUser, onNavigate]);
+
+  // Calculate dynamic stats
+  const sellerStats = {
+    totalSales: seller?.totalSales || 0,
+    activeProducts: sellerProducts.length,
+    averageRating: sellerReviews.length > 0 
+      ? sellerReviews.reduce((sum, review) => sum + review.rating, 0) / sellerReviews.length 
+      : seller?.rating || 0,
+    reviewCount: sellerReviews.length,
+    responseRate: 98
+  };
+
+  const canAddToCart = currentUser && currentUser.role === 'customer';
+  const isSeller = currentUser?.role === 'seller';
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-soft-cream py-8 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <p>Loading seller profile...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !seller) {
+    return (
+      <div className="min-h-screen bg-soft-cream py-8 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <p className="text-red-600 mb-4">{error || 'Seller not found'}</p>
+              <Button onClick={() => onNavigate('products')}>Back to Marketplace</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-soft-cream py-8 px-4">
@@ -66,11 +140,23 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
             <div className="md:col-span-2">
               <div className="flex items-start space-x-6 mb-6">
                 <Avatar className="w-24 h-24">
-                  <ImageWithFallback
-                    src={seller.image}
-                    alt={seller.name}
-                    className="w-full h-full object-cover"
-                  />
+                  <Avatar className="w-12 h-12">
+  {seller.image ? (
+    <img 
+      src={seller.image} 
+      alt={seller.name}
+      className="w-full h-full object-cover rounded-full"
+      onError={(e) => {
+        // Hide the image if it fails to load
+        (e.target as HTMLImageElement).style.display = 'none';
+      }}
+    />
+  ) : (
+    <AvatarFallback className="bg-primary/10 text-primary">
+      {seller.name[0]?.toUpperCase() || 'U'}
+    </AvatarFallback>
+  )}
+</Avatar>
                   <AvatarFallback className="text-2xl">{seller.name[0]}</AvatarFallback>
                 </Avatar>
                 
@@ -90,55 +176,43 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
                         <Star 
                           key={i} 
                           className={`w-5 h-5 ${
-                            i < Math.floor(seller.rating) 
+                            i < Math.floor(sellerStats.averageRating) 
                               ? 'fill-golden-harvest text-golden-harvest' 
                               : 'text-gray-300'
                           }`} 
                         />
                       ))}
                     </div>
-                    <span className="font-['Lato']">{seller.rating}</span>
-                    <span className="text-muted-foreground">({sellerReviews.length} reviews)</span>
+                    <span className="font-['Lato']">{sellerStats.averageRating.toFixed(1)}</span>
+                    <span className="text-muted-foreground">({sellerStats.reviewCount} reviews)</span>
                   </div>
 
                   <p className="text-foreground/80 leading-relaxed mb-6">
-                    {seller.description}
+                    {seller.description || 'No description available.'}
                   </p>
 
                   {/* Contact Info */}
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-3 text-foreground/70">
-                      <MapPin className="w-5 h-5 text-primary" />
-                      <span>{seller.location}</span>
-                    </div>
-                    <div className="flex items-center space-x-3 text-foreground/70">
-                      <Mail className="w-5 h-5 text-primary" />
-                      <a href={`mailto:${seller.contactEmail}`} className="hover:text-primary transition-colors">
-                        {seller.contactEmail}
-                      </a>
-                    </div>
-                    <div className="flex items-center space-x-3 text-foreground/70">
-                      <Phone className="w-5 h-5 text-primary" />
-                      <a href={`tel:${seller.contactPhone}`} className="hover:text-primary transition-colors">
-                        {seller.contactPhone}
-                      </a>
-                    </div>
+                    {seller.location && (
+                      <div className="flex items-center space-x-3 text-foreground/70">
+                        <MapPin className="w-5 h-5 text-primary" />
+                        <span>{seller.location}</span>
+                      </div>
+                    )}
+                    {seller.contactEmail && (
+                      <div className="flex items-center space-x-3 text-foreground/70">
+                        <Mail className="w-5 h-5 text-primary" />
+                        <span>{seller.contactEmail}</span>
+                      </div>
+                    )}
+                    {seller.contactPhone && (
+                      <div className="flex items-center space-x-3 text-foreground/70">
+                        <Phone className="w-5 h-5 text-primary" />
+                        <span>{seller.contactPhone}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-
-              <Separator className="my-6" />
-
-              {/* Action Buttons */}
-              <div className="flex gap-4">
-                <Button className="bg-primary hover:bg-primary/90">
-                  <Mail className="w-4 h-4 mr-2" />
-                  Contact Seller
-                </Button>
-                <Button variant="outline">
-                  <Package className="w-4 h-4 mr-2" />
-                  View All Products
-                </Button>
               </div>
             </div>
 
@@ -149,7 +223,7 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
                   <p className="text-sm text-foreground/70">Total Sales</p>
                   <TrendingUp className="w-5 h-5 text-primary" />
                 </div>
-                <p className="font-['Poppins'] text-3xl text-primary mb-1">{seller.totalSales}</p>
+                <p className="font-['Poppins'] text-3xl text-primary mb-1">{sellerStats.totalSales}</p>
                 <p className="text-sm text-foreground/70">Completed Orders</p>
               </Card>
 
@@ -158,7 +232,7 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
                   <p className="text-sm text-foreground/70">Products</p>
                   <Package className="w-5 h-5 text-golden-harvest" />
                 </div>
-                <p className="font-['Poppins'] text-3xl text-golden-harvest mb-1">{sellerProducts.length}</p>
+                <p className="font-['Poppins'] text-3xl text-golden-harvest mb-1">{sellerStats.activeProducts}</p>
                 <p className="text-sm text-foreground/70">Active Listings</p>
               </Card>
 
@@ -167,7 +241,7 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
                   <p className="text-sm text-foreground/70">Response Rate</p>
                   <Award className="w-5 h-5 text-olive-green" />
                 </div>
-                <p className="font-['Poppins'] text-3xl text-olive-green mb-1">98%</p>
+                <p className="font-['Poppins'] text-3xl text-olive-green mb-1">{sellerStats.responseRate}%</p>
                 <p className="text-sm text-foreground/70">Within 24 hours</p>
               </Card>
 
@@ -184,10 +258,10 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
         <Tabs defaultValue="products" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="products">
-              Products ({sellerProducts.length})
+              Products ({sellerStats.activeProducts})
             </TabsTrigger>
             <TabsTrigger value="reviews">
-              Reviews ({sellerReviews.length})
+              Reviews ({sellerStats.reviewCount})
             </TabsTrigger>
           </TabsList>
 
@@ -202,14 +276,32 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
 
             {sellerProducts.length > 0 ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {sellerProducts.map(product => (
-                  <ProductCard
+                <style>{`
+                  .seller-profile-products img {
+                    max-height: 200px !important;
+                    height: 200px !important;
+                    object-fit: cover !important;
+                    width: 100% !important;
+                  }
+                `}</style>
+                {sellerProducts.map((product, index) => (
+                  <motion.div
                     key={product.id}
-                    product={product}
-                    onViewDetails={(id) => onNavigate('product-details', id)}
-                    onAddToCart={onAddToCart}
-                    onViewSeller={(sellerId) => onNavigate('seller-profile', sellerId)}
-                  />
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    className="seller-profile-products"
+                  >
+                    <ProductCard
+                      product={product}
+                      onViewDetails={(id) => onNavigate('product-details', id)}
+                      onAddToCart={canAddToCart ? onAddToCart : undefined}
+                      onViewSeller={(sellerId) => onNavigate('seller-profile', sellerId)}
+                      isLoggedIn={!!currentUser}
+                      showAddToCart={!isSeller}
+                    />
+                  </motion.div>
                 ))}
               </div>
             ) : (
@@ -228,86 +320,89 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
               <p className="text-foreground/70">See what customers are saying about {seller.name}</p>
             </div>
 
-            {/* Rating Summary */}
-            <Card className="p-6 bg-white border border-border">
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="text-center">
-                  <p className="font-['Poppins'] text-6xl text-primary mb-2">{seller.rating}</p>
-                  <div className="flex items-center justify-center space-x-1 mb-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Star 
-                        key={i} 
-                        className={`w-6 h-6 ${
-                          i < Math.floor(seller.rating) 
-                            ? 'fill-golden-harvest text-golden-harvest' 
-                            : 'text-gray-300'
-                        }`} 
-                      />
-                    ))}
-                  </div>
-                  <p className="text-foreground/70">Based on {sellerReviews.length} reviews</p>
-                </div>
-
-                <div className="space-y-2">
-                  {[5, 4, 3, 2, 1].map((stars) => {
-                    const count = sellerReviews.filter(r => r.rating === stars).length;
-                    const percentage = (count / sellerReviews.length) * 100;
-                    return (
-                      <div key={stars} className="flex items-center space-x-3">
-                        <span className="text-sm w-12">{stars} stars</span>
-                        <div className="flex-1 bg-secondary/30 rounded-full h-2">
-                          <div 
-                            className="bg-golden-harvest h-2 rounded-full transition-all"
-                            style={{ width: `${percentage}%` }}
+            {sellerReviews.length > 0 ? (
+              <>
+                {/* Rating Summary */}
+                <Card className="p-6 bg-white border border-border">
+                  <div className="grid md:grid-cols-2 gap-8">
+                    <div className="text-center">
+                      <p className="font-['Poppins'] text-6xl text-primary mb-2">{sellerStats.averageRating.toFixed(1)}</p>
+                      <div className="flex items-center justify-center space-x-1 mb-2">
+                        {[...Array(5)].map((_, i) => (
+                          <Star 
+                            key={i} 
+                            className={`w-6 h-6 ${
+                              i < Math.floor(sellerStats.averageRating) 
+                                ? 'fill-golden-harvest text-golden-harvest' 
+                                : 'text-gray-300'
+                            }`} 
                           />
-                        </div>
-                        <span className="text-sm text-muted-foreground w-8">{count}</span>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
+                      <p className="text-foreground/70">Based on {sellerStats.reviewCount} reviews</p>
+                    </div>
 
-            {/* Reviews List */}
-            <div className="space-y-4">
-              {sellerReviews.map((review) => (
-                <Card key={review.id} className="p-6 bg-white border border-border">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h4 className="font-['Lato'] mb-1">{review.customerName}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(review.date).toLocaleDateString('en-US', {
-                          month: 'long',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </p>
+                    <div className="space-y-2">
+                      {[5, 4, 3, 2, 1].map((stars) => {
+                        const count = sellerReviews.filter(r => r.rating === stars).length;
+                        const percentage = sellerReviews.length > 0 ? (count / sellerReviews.length) * 100 : 0;
+                        return (
+                          <div key={stars} className="flex items-center space-x-3">
+                            <span className="text-sm w-12">{stars} stars</span>
+                            <div className="flex-1 bg-secondary/30 rounded-full h-2">
+                              <div 
+                                className="bg-golden-harvest h-2 rounded-full transition-all"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-muted-foreground w-8">{count}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center space-x-1">
-                      {[...Array(5)].map((_, i) => (
-                        <Star 
-                          key={i} 
-                          className={`w-4 h-4 ${
-                            i < review.rating 
-                              ? 'fill-golden-harvest text-golden-harvest' 
-                              : 'text-gray-300'
-                          }`} 
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-foreground/80 mb-3">{review.comment}</p>
-                  <div className="text-sm text-muted-foreground">
-                    Product: <span className="text-foreground">{review.productName}</span>
                   </div>
                 </Card>
-              ))}
-            </div>
 
-            <Button variant="outline" className="w-full">
-              Load More Reviews
-            </Button>
+                {/* Reviews List */}
+                <div className="space-y-4">
+                  {sellerReviews.map((review) => (
+                    <Card key={review.id} className="p-6 bg-white border border-border">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h4 className="font-['Lato'] mb-1">{review.customerName}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(review.date).toLocaleDateString('en-US', {
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          {[...Array(5)].map((_, i) => (
+                            <Star 
+                              key={i} 
+                              className={`w-4 h-4 ${
+                                i < review.rating 
+                                  ? 'fill-golden-harvest text-golden-harvest' 
+                                  : 'text-gray-300'
+                              }`} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-foreground/80 mb-3">{review.comment}</p>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Card className="p-12 text-center bg-white border border-border">
+                <Star className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-['Poppins'] text-xl mb-2">No Reviews Yet</h3>
+                <p className="text-foreground/70">This seller hasn't received any reviews yet.</p>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
 
@@ -325,10 +420,12 @@ export function SellerProfilePage({ sellerId, onNavigate, onAddToCart }: SellerP
                 const firstProduct = sellerProducts[0];
                 if (firstProduct) {
                   onNavigate('product-details', firstProduct.id);
+                } else {
+                  onNavigate('products');
                 }
               }}
             >
-              Shop {seller.name}'s Products
+              {sellerProducts.length > 0 ? `Shop ${seller.name}'s Products` : 'Browse All Products'}
             </Button>
           </div>
         </Card>
