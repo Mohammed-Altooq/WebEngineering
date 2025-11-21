@@ -451,7 +451,7 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
       </section>
 
       {/* How It Works */}
-      <section className="py-16 px-4">
+      <section id="how-it-works" className="py-16 px-4">
         <div className="max-w-7xl mx-auto">
           <motion.div
             className="text-center mb-12"

@@ -11,7 +11,7 @@ interface NavbarProps {
   // auth state
   isLoggedIn: boolean;
   isSeller?: boolean; // optional, only matters for seller dashboard
-  onLogout: () => void; // 🔥 NEW
+  onLogout: () => void;
 }
 
 export function Navbar({
@@ -23,6 +23,18 @@ export function Navbar({
   onLogout,
 }: NavbarProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  // ✅ Top navigation links
+  // - No "How It Works" here
+  // - "Become a Seller" only if NOT a seller
+  const navLinks = [
+    { name: 'Home', page: 'home' },
+    { name: 'Marketplace', page: 'products' },
+    { name: 'About', page: 'about' },
+    // Become a Seller only visible if the user is NOT a seller
+    ...(isSeller ? [] : [{ name: 'Become a Seller', page: 'register' as const }]),
+    { name: 'FAQs', page: 'faqs' },
+  ];
 
   return (
     <motion.nav
@@ -50,10 +62,7 @@ export function Navbar({
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            {[
-              { name: 'Home', page: 'home' },
-              { name: 'Marketplace', page: 'products' },
-            ].map((item) => (
+            {navLinks.map((item) => (
               <motion.button
                 key={item.page}
                 onClick={() => onNavigate(item.page)}
@@ -157,11 +166,9 @@ export function Navbar({
                           <Settings className="w-4 h-4" />
                           <span>{isSeller ? 'Edit Profile' : 'My Profile'}</span>
                         </button>
-                        
-              
 
                         <div className="border-t border-border my-1"></div>
-                        
+
                         <button
                           onClick={() => {
                             onLogout();

@@ -17,6 +17,8 @@ import { Product } from './lib/mockData';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { RegisterPage } from './components/RegisterPage';
+import { AboutPage } from './components/AboutPage';
+import { FaqPage } from './components/FaqPage';
 
 // Using Vite proxy - requests will be forwarded to Express server
 const API_BASE_URL = '';
@@ -123,8 +125,12 @@ export default function App() {
       setSelectedCategory(undefined);
     }
 
+    const skipScrollToTop = page === 'home' && idOrCategory === 'keepScroll';
+
+  if (!skipScrollToTop) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }
+};
 
   const handleAddToCart = async (product: Product, quantity: number = 1) => {
     console.log('🛒 === ADD TO CART DEBUG ===');
@@ -318,6 +324,12 @@ export default function App() {
 
       case 'style-guide':
         return <StyleGuide />;
+      
+      case 'about':
+        return <AboutPage onNavigate={handleNavigate} />;
+
+      case 'faqs':
+        return <FaqPage onNavigate={handleNavigate} />;
 
       default:
         return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />;

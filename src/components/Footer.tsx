@@ -1,7 +1,50 @@
 import { Leaf, Mail, Phone, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-export function Footer({ onNavigate }: { onNavigate: (page: string, category?: string) => void }) {
+interface FooterProps {
+  onNavigate: (page: string, param?: string) => void;
+}
+
+export function Footer({ onNavigate }: FooterProps) {
+  // Quick links config with actions
+  const quickLinks = [
+    {
+      label: 'About Us',
+      onClick: () => onNavigate('about'),
+    },
+    {
+  label: 'How It Works',
+  onClick: () => {
+    // tell App "go to home, but don't scroll to top"
+    onNavigate('home', 'keepScroll');
+
+    // after home renders, smoothly scroll to the section
+    setTimeout(() => {
+      const el = document.getElementById('how-it-works');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 80); // small delay is enough
+  },
+},
+    {
+      label: 'Become a Seller',
+      onClick: () => onNavigate('register'), // or 'login' if you prefer
+    },
+    {
+      label: 'FAQs',
+      onClick: () => onNavigate('faqs'),
+    },
+  ];
+
+  const categories = ['Fresh Produce', 'Handmade Crafts', 'Dairy Products', 'Honey & Preserves'];
+
+  const contactItems = [
+    { icon: Mail, text: 'info@localharvest.bh' },
+    { icon: Phone, text: '+973 3333 7777' },
+    { icon: MapPin, text: 'Manama, Bahrain' },
+  ];
+
   return (
     <footer className="bg-muted text-foreground mt-20 border-t border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -40,16 +83,22 @@ export function Footer({ onNavigate }: { onNavigate: (page: string, category?: s
           >
             <h4 className="font-['Lato'] mb-4">Quick Links</h4>
             <ul className="space-y-2 text-sm text-foreground/80">
-              {['About Us', 'How It Works', 'Become a Seller', 'FAQs'].map((link, index) => (
+              {quickLinks.map((item, index) => (
                 <motion.li 
-                  key={link}
+                  key={item.label}
                   initial={{ opacity: 0, x: -10 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
                   whileHover={{ x: 5 }}
                 >
-                  <a href="#" className="hover:text-primary transition-colors">{link}</a>
+                  <button
+                    type="button"
+                    onClick={item.onClick}
+                    className="hover:text-primary transition-colors text-left w-full"
+                  >
+                    {item.label}
+                  </button>
                 </motion.li>
               ))}
             </ul>
@@ -64,7 +113,7 @@ export function Footer({ onNavigate }: { onNavigate: (page: string, category?: s
           >
             <h4 className="font-['Lato'] mb-4">Categories</h4>
             <ul className="space-y-2 text-sm text-foreground/80">
-              {['Fresh Produce', 'Handmade Crafts', 'Dairy Products', 'Honey & Preserves'].map((category, index) => (
+              {categories.map((category, index) => (
                 <motion.li 
                   key={category}
                   initial={{ opacity: 0, x: -10 }}
@@ -74,8 +123,9 @@ export function Footer({ onNavigate }: { onNavigate: (page: string, category?: s
                   whileHover={{ x: 5 }}
                 >
                   <button
+                    type="button"
                     onClick={() => onNavigate('products', category)}
-                    className="hover:text-primary transition-colors text-left"
+                    className="hover:text-primary transition-colors text-left w-full"
                   >
                     {category}
                   </button>
@@ -93,11 +143,7 @@ export function Footer({ onNavigate }: { onNavigate: (page: string, category?: s
           >
             <h4 className="font-['Lato'] mb-4">Contact Us</h4>
             <ul className="space-y-3 text-sm text-foreground/80">
-              {[
-                { icon: Mail, text: 'info@localharvest.bh' },
-                { icon: Phone, text: '+973 3333 7777' },
-                { icon: MapPin, text: 'Manama, Bahrain' }
-              ].map((item, index) => (
+              {contactItems.map((item, index) => (
                 <motion.li 
                   key={index}
                   className="flex items-center space-x-2"
