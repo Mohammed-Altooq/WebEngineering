@@ -1,7 +1,7 @@
 import { Leaf, Mail, Phone, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-export function Footer() {
+export function Footer({ onNavigate }: { onNavigate: (page: string, category?: string) => void }) {
   return (
     <footer className="bg-muted text-foreground mt-20 border-t border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -73,7 +73,12 @@ export function Footer() {
                   transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
                   whileHover={{ x: 5 }}
                 >
-                  <a href="#" className="hover:text-primary transition-colors">{category}</a>
+                  <button
+                    onClick={() => onNavigate('products', category)}
+                    className="hover:text-primary transition-colors text-left"
+                  >
+                    {category}
+                  </button>
                 </motion.li>
               ))}
             </ul>

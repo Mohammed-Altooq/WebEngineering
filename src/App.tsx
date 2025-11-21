@@ -345,7 +345,7 @@ export default function App() {
 
       <main>{renderPage()}</main>
 
-      <Footer />
+      <Footer onNavigate={handleNavigate} />
 
       <Toaster
         position="bottom-right"
