@@ -172,9 +172,7 @@ export function ProductDetailsPage({
                 alt={product.name}
                 className="w-full aspect-square object-cover"
               />
-              <button className="absolute top-4 right-4 bg-white rounded-full p-3 shadow-lg hover:bg-secondary transition-colors">
-                <Heart className="w-5 h-5 text-foreground" />
-              </button>
+      
             </div>
           </div>
 

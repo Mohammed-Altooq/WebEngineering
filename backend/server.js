@@ -461,21 +461,74 @@ app.get("/api/orders/user/:userId", async (req, res) => {
   }
 });
 
-// Create a new order
+// Create a new order + update products/sellers + clear cart
 app.post("/api/users/:userId/orders", async (req, res) => {
+  const { userId } = req.params;
+
   try {
     const newId = generateId("o");
+    const { items = [], total, status, date, shippingAddress, customerName } = req.body;
+
+    if (!items.length) {
+      return res.status(400).json({ error: "Order must contain at least one item" });
+    }
+
+    // 1) CREATE ORDER
     const order = await Order.create({
-      ...req.body,
       id: newId,
-      customerId: req.params.userId
+      customerId: userId,
+      customerName: customerName || "Unknown",
+      items,
+      total,
+      status: status || "Pending",
+      date: date || new Date().toISOString(),
+      shippingAddress: shippingAddress || ""
     });
+
+    // 2) UPDATE PRODUCT STOCK + COLLECT SELLER REVENUE
+    const sellerRevenue = {}; // { sellerId: totalRevenue }
+
+    for (const item of items) {
+      const { productId, quantity, price } = item;
+      if (!productId || !quantity) continue;
+
+      const product = await Product.findOne({ id: productId });
+      if (!product) continue;
+
+      // Update stock
+      const currentStock = typeof product.stock === "number" ? product.stock : 0;
+      const newStock = Math.max(0, currentStock - quantity);
+      product.stock = newStock;
+      await product.save();
+
+      // Accumulate revenue per seller
+      if (product.sellerId) {
+        const revenue = (price || 0) * quantity;
+        sellerRevenue[product.sellerId] = (sellerRevenue[product.sellerId] || 0) + revenue;
+      }
+    }
+
+    // 3) UPDATE SELLERS' totalSales
+    const sellerIds = Object.keys(sellerRevenue);
+    for (const sellerId of sellerIds) {
+      const seller = await Seller.findOne({ id: sellerId });
+      if (!seller) continue;
+
+      const currentTotal = typeof seller.totalSales === "number" ? seller.totalSales : 0;
+      seller.totalSales = currentTotal + sellerRevenue[sellerId];
+      await seller.save();
+    }
+
+    // 4) CLEAR USER'S CART
+    await Cart.findOneAndDelete({ userId });
+
     res.status(201).json(order);
   } catch (err) {
-    console.error("Error creating order:", err);
+    console.error("Error creating order and updating data:", err);
     res.status(500).json({ error: "Failed to create order" });
   }
 });
+
 
 // ----- CART (NEW IMPROVED SCHEMA) -----
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { Plus, Package, TrendingUp, DollarSign, Users, Edit, Trash2, Eye } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -62,6 +62,8 @@ interface Order {
 
 export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProps) {
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [showEditProduct, setShowEditProduct] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -75,10 +77,66 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     stock: '',
     category: '',
     description: '',
-    image: ''
+    image: '' // can be URL or base64 data URL
   });
 
-  // Fetch seller data, products, and orders
+  // Form states for editing product
+  const [editProductForm, setEditProductForm] = useState({
+    name: '',
+    price: '',
+    stock: '',
+    category: '',
+    description: '',
+    image: '' // can be URL or base64 data URL
+  });
+
+  // ==== IMAGE HANDLERS (BASE64, NO /api/upload) ====
+
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file); // -> "data:image/png;base64,...."
+    });
+  };
+
+  const handleAddProductImageChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setProductForm(prev => ({ ...prev, image: dataUrl }));
+      toast.success('Image attached successfully');
+    } catch (err) {
+      console.error('Error reading image file:', err);
+      toast.error('Failed to read image file');
+    }
+  };
+
+  const handleEditProductImageChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setEditProductForm(prev => ({ ...prev, image: dataUrl }));
+      toast.success('Image updated successfully');
+    } catch (err) {
+      console.error('Error reading image file:', err);
+      toast.error('Failed to read image file');
+    }
+  };
+
+  // ==== FETCH SELLER DATA, PRODUCTS, ORDERS ====
+
   useEffect(() => {
     const fetchSellerData = async () => {
       if (!currentUser?.id) {
@@ -134,6 +192,8 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     fetchSellerData();
   }, [currentUser]);
 
+  // ==== ADD PRODUCT ====
+
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -148,7 +208,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
         price: parseFloat(productForm.price),
         category: productForm.category,
         description: productForm.description,
-        image: productForm.image || '',
+        image: productForm.image || '',  // base64 or URL
         sellerId: seller.id,
         sellerName: seller.name,
         stock: parseInt(productForm.stock),
@@ -189,6 +249,75 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     }
   };
 
+  // ==== EDIT PRODUCT ====
+
+  const handleEditProduct = (product: Product) => {
+    setEditingProduct(product);
+    setEditProductForm({
+      name: product.name,
+      price: product.price.toString(),
+      stock: product.stock.toString(),
+      category: product.category,
+      description: product.description || '',
+      image: product.image || ''
+    });
+    setShowEditProduct(true);
+  };
+
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!editingProduct) {
+      toast.error('No product selected for editing');
+      return;
+    }
+
+    try {
+      const productData = {
+        name: editProductForm.name,
+        price: parseFloat(editProductForm.price),
+        category: editProductForm.category,
+        description: editProductForm.description,
+        image: editProductForm.image || '', // base64 or URL
+        stock: parseInt(editProductForm.stock),
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/products/${editingProduct.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update product');
+      }
+
+      const updatedProduct = await response.json();
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? updatedProduct : p));
+      
+      // Reset form and close dialog
+      setEditProductForm({
+        name: '',
+        price: '',
+        stock: '',
+        category: '',
+        description: '',
+        image: ''
+      });
+      setEditingProduct(null);
+      setShowEditProduct(false);
+      toast.success('Product updated successfully!');
+
+    } catch (err) {
+      console.error('Error updating product:', err);
+      toast.error('Failed to update product');
+    }
+  };
+
+  // ==== DELETE PRODUCT ====
+
   const handleDeleteProduct = async (productId: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
@@ -208,11 +337,14 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     }
   };
 
-  // Calculate stats
+  // ==== STATS ====
+
   const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
   const totalProducts = products.length;
   const totalOrders = orders.length;
   const averageRating = seller?.rating || 0;
+
+  // ==== LOADING / ERROR STATES ====
 
   if (loading) {
     return (
@@ -252,6 +384,8 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
       </div>
     );
   }
+
+  // ==== MAIN UI ====
 
   return (
     <div className="min-h-screen bg-soft-cream py-8 px-4">
@@ -394,14 +528,18 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="image">Product Image URL</Label>
+                      <Label htmlFor="imageFile">Product Image</Label>
                       <Input 
-                        id="image" 
-                        type="url" 
-                        placeholder="https://..."
-                        value={productForm.image}
-                        onChange={(e) => setProductForm(prev => ({ ...prev, image: e.target.value }))}
+                        id="imageFile"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAddProductImageChange}
                       />
+                      {productForm.image && (
+                        <p className="text-xs text-muted-foreground break-all">
+                          Image attached
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex gap-3 pt-4">
@@ -417,10 +555,122 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
               </Dialog>
             </div>
 
+            {/* Edit Product Dialog */}
+            <Dialog open={showEditProduct} onOpenChange={setShowEditProduct}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="font-['Poppins']">Edit Product</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleUpdateProduct} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editProductName">Product Name</Label>
+                    <Input 
+                      id="editProductName" 
+                      placeholder="e.g., Fresh Organic Tomatoes"
+                      value={editProductForm.name}
+                      onChange={(e) => setEditProductForm(prev => ({ ...prev, name: e.target.value }))}
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="editPrice">Price ($)</Label>
+                      <Input 
+                        id="editPrice" 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="0.00"
+                        value={editProductForm.price}
+                        onChange={(e) => setEditProductForm(prev => ({ ...prev, price: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editStock">Stock Quantity</Label>
+                      <Input 
+                        id="editStock" 
+                        type="number" 
+                        placeholder="0"
+                        value={editProductForm.stock}
+                        onChange={(e) => setEditProductForm(prev => ({ ...prev, stock: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="editCategory">Category</Label>
+                    <Select 
+                      value={editProductForm.category}
+                      onValueChange={(value) => setEditProductForm(prev => ({ ...prev, category: value }))}
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fresh-produce">Fresh Produce</SelectItem>
+                        <SelectItem value="handmade-crafts">Handmade Crafts</SelectItem>
+                        <SelectItem value="dairy">Dairy Products</SelectItem>
+                        <SelectItem value="honey">Honey & Preserves</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="editDescription">Description</Label>
+                    <Textarea 
+                      id="editDescription" 
+                      placeholder="Describe your product..."
+                      rows={4}
+                      value={editProductForm.description}
+                      onChange={(e) => setEditProductForm(prev => ({ ...prev, description: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="editImageFile">Product Image</Label>
+                    <Input 
+                      id="editImageFile"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditProductImageChange}
+                    />
+                    {editProductForm.image && (
+                      <p className="text-xs text-muted-foreground break-all">
+                        Image attached
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <Button type="button" variant="outline" onClick={() => setShowEditProduct(false)} className="flex-1">
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90">
+                      Update Product
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            {/* Product list */}
             <div className="space-y-4">
               {products.map(product => (
                 <Card key={product.id} className="p-4 bg-white border border-border">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Optional thumbnail */}
+                    {product.image && (
+                      <div className="w-16 h-16 flex-shrink-0 overflow-hidden rounded-md border border-border">
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
                     <div className="flex-1">
                       <h3 className="font-['Lato'] mb-1">{product.name}</h3>
                       <div className="flex items-center space-x-4 text-sm text-foreground/70">
@@ -432,7 +682,11 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditProduct(product)}
+                      >
                         <Edit className="w-4 h-4" />
                       </Button>
                       <Button 

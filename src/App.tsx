@@ -37,6 +37,7 @@ export default function App() {
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [cartItemCount, setCartItemCount] = useState(0);
+  const [cartItems, setCartItems] = useState<any[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -58,16 +59,17 @@ export default function App() {
     setIsLoading(false);
   }, []);
 
-  // Load cart count when user changes
+  // Load cart items & count when user changes
   useEffect(() => {
-    async function loadCartCount() {
+    async function loadCart() {
       if (!user?.id) {
+        setCartItems([]);
         setCartItemCount(0);
         return;
       }
 
       try {
-        console.log('🛒 Loading cart count for user:', user.id);
+        console.log('🛒 Loading cart for user:', user.id);
         const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/cart`);
         console.log('Cart response status:', response.status);
         
@@ -78,24 +80,31 @@ export default function App() {
           try {
             const cartData = JSON.parse(responseText);
             const items = cartData.items || [];
-            const totalItems = Array.isArray(items) ? items.reduce((sum, item) => sum + item.quantity, 0) : 0;
+            const totalItems = Array.isArray(items)
+              ? items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)
+              : 0;
+
+            setCartItems(Array.isArray(items) ? items : []);
             setCartItemCount(totalItems);
-            console.log('✅ Cart count loaded:', totalItems);
+            console.log('✅ Cart loaded. Items:', items.length, 'Count:', totalItems);
           } catch (parseError) {
             console.error('Error parsing cart response:', parseError);
+            setCartItems([]);
             setCartItemCount(0);
           }
         } else {
-          console.log('⚠️ Cart not found, setting to 0');
+          console.log('⚠️ Cart not found, setting to empty');
+          setCartItems([]);
           setCartItemCount(0);
         }
       } catch (err) {
-        console.error('❌ Error loading cart count:', err);
+        console.error('❌ Error loading cart:', err);
+        setCartItems([]);
         setCartItemCount(0);
       }
     }
 
-    loadCartCount();
+    loadCart();
   }, [user?.id]);
 
   const handleLogin = (userData: User) => {
@@ -106,6 +115,7 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     setCartItemCount(0);
+    setCartItems([]);
     localStorage.removeItem('user');
     setCurrentPage('home');
   };
@@ -179,26 +189,39 @@ export default function App() {
         console.log('✅ Item added successfully');
         toast.success(`Added ${product.name} to cart`);
 
-        // Update cart count
+        // Try to use the response to update cart state
         try {
           const cartResponse = JSON.parse(addText);
-          if (cartResponse.cart && cartResponse.cart.items) {
-            const totalItems = cartResponse.cart.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+          if (cartResponse.cart && Array.isArray(cartResponse.cart.items)) {
+            const items = cartResponse.cart.items;
+            const totalItems = items.reduce(
+              (sum: number, item: any) => sum + (item.quantity || 0),
+              0
+            );
+            setCartItems(items);
             setCartItemCount(totalItems);
-            console.log('✅ Cart count updated to:', totalItems);
+            console.log('✅ Cart updated. Items:', items.length, 'Count:', totalItems);
+            return;
           }
         } catch (e) {
-          console.log('⚠️ Could not parse cart response for count update');
-          // Fallback: reload cart count
-          const updatedCartResponse = await fetch(`${API_BASE_URL}/api/users/${user.id}/cart`);
-          if (updatedCartResponse.ok) {
-            const cartText = await updatedCartResponse.text();
-            try {
-              const cartData = JSON.parse(cartText);
-              const items = cartData.items || [];
-              const totalItems = Array.isArray(items) ? items.reduce((sum, item) => sum + item.quantity, 0) : 0;
-              setCartItemCount(totalItems);
-            } catch {}
+          console.log('⚠️ Could not parse cart response for state update, falling back to GET');
+        }
+
+        // Fallback: reload cart from backend
+        const updatedCartResponse = await fetch(`${API_BASE_URL}/api/users/${user.id}/cart`);
+        if (updatedCartResponse.ok) {
+          const cartText = await updatedCartResponse.text();
+          try {
+            const cartData = JSON.parse(cartText);
+            const items = cartData.items || [];
+            const totalItems = Array.isArray(items)
+              ? items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)
+              : 0;
+            setCartItems(Array.isArray(items) ? items : []);
+            setCartItemCount(totalItems);
+            console.log('✅ Cart reloaded from GET. Count:', totalItems);
+          } catch (e) {
+            console.error('Error parsing fallback cart response:', e);
           }
         }
       } else {
@@ -215,11 +238,13 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage 
-          onNavigate={handleNavigate} 
-          onAddToCart={handleAddToCart} 
-          currentUser={user}
-        />;
+        return (
+          <HomePage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart} 
+            currentUser={user}
+          />
+        );
 
       case 'login':
         return (
@@ -261,7 +286,11 @@ export default function App() {
             currentUser={user}
           />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart} 
+            currentUser={user} 
+          />
         );
 
       case 'cart':
@@ -272,20 +301,37 @@ export default function App() {
           />
         );
 
-      case 'checkout':
+      case 'checkout': {
+        const items = cartItems;
+        const total = items.reduce(
+          (sum: number, item: any) => sum + (item.price || 0) * (item.quantity || 0),
+          0
+        );
+
         return (
           <CheckoutPage
-            cartItems={[]}
-            cartTotal={0}
+            cartItems={items}
+            cartTotal={total}
             onNavigate={handleNavigate}
+            currentUser={user}
+             onCartCleared={() => {
+        setCartItems([]);
+        setCartTotal(0);
+        setCartItemCount(0);
+      }}
           />
         );
+      }
 
       case 'seller-dashboard':
         return isSeller ? (
           <SellerDashboard onNavigate={handleNavigate} currentUser={user} />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart} 
+            currentUser={user} 
+          />
         );
 
       case 'seller-profile':
@@ -296,7 +342,6 @@ export default function App() {
             onAddToCart={handleAddToCart}
             currentUser={user}
           />
-
         );
 
       case 'reviews':
@@ -326,7 +371,11 @@ export default function App() {
             onAddToCart={handleAddToCart}
           />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart} 
+            currentUser={user} 
+          />
         );
 
       case 'style-guide':
@@ -339,7 +388,13 @@ export default function App() {
         return <FaqPage onNavigate={handleNavigate} />;
 
       default:
-        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />;
+        return (
+          <HomePage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart} 
+            currentUser={user} 
+          />
+        );
     }
   };
 
