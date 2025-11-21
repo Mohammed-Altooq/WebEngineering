@@ -137,7 +137,7 @@ const cartSchema = new mongoose.Schema(
     ],
     updatedAt: { type: Date, default: Date.now }
   },
-  { collection: "carts" }
+  { collection: "cartItems" }
 );
 const Cart = mongoose.model("Cart", cartSchema);
 
