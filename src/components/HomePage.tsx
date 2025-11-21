@@ -604,7 +604,7 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
               transition={{ duration: 0.6 }}
               whileHover={{ scale: 1.02 }}
             >
-              <Card className="bg-gradient-to-r from-primary to-olive-green text-white p-12 text-center border-0 shadow-2xl shadow-primary/20">
+              <Card className="bg-primary text-white p-12 text-center border-0 shadow-2xl shadow-primary/20">
                 <h2 className="font-['Poppins'] text-3xl mb-4">
                   Ready to Start Selling?
                 </h2>
