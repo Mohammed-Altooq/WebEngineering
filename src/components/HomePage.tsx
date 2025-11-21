@@ -26,6 +26,7 @@ interface CategoryInfo {
 }
 
 export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps) {
+  const [topRated, setTopRated] = useState<any[]>([]);
   const [sellerCount, setSellerCount] = useState<number | null>(null);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
 
@@ -114,7 +115,29 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
     loadCategories();
   }, []);
 
-  const featuredProducts = products.slice(0, 3);
+// --- Load top 3 highest-rated products from DB ---
+useEffect(() => {
+  async function loadTopRated() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products`);
+      const data = await res.json();
+
+      // Sort by rating (highest → lowest)
+      const sorted = [...data].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+
+      // Take top 3
+      setTopRated(sorted.slice(0, 3));
+    } catch (err) {
+      console.error("Error loading top rated products:", err);
+    }
+  }
+
+  loadTopRated();
+}, []);
+
+
+  const featuredProducts = topRated.length > 0 ? topRated : products.slice(0, 3);
+
 
   return (
     <div className="min-h-screen">
