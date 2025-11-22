@@ -28,7 +28,8 @@ export function RegisterPage({
   isLoggedIn = false, 
   currentUserRole 
 }: RegisterPageProps) {
-  const [userType, setUserType] = useState<'customer' | 'seller'>('seller'); // Default to seller for customers
+  const [userType, setUserType] = useState<'customer' | 'seller'>('customer'); // default to customer
+
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
