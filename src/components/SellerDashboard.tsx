@@ -1159,12 +1159,16 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
             </Card>
 
             {orders.length > 0 && (
-              <div className="mt-6">
-                <Button variant="outline" className="w-full">
-                  View All Orders
-                </Button>
-              </div>
-            )}
+  <div className="mt-6">
+    <Button
+      variant="outline"
+      className="w-full"
+      onClick={() => onNavigate('seller-order-management')}
+    >
+      View All Orders
+    </Button>
+  </div>
+)}
           </div>
         </div>
       </div>

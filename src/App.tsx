@@ -20,6 +20,7 @@ import { RegisterPage } from './components/RegisterPage';
 import { AboutPage } from './components/AboutPage';
 import { FaqPage } from './components/FaqPage';
 import { authFetch } from './lib/api';
+import { SellerOrdersPage } from './components/SellerOrdersPage';
 
 // Using Vite proxy - requests will be forwarded to Express server
 const API_BASE_URL = '';
@@ -338,7 +339,11 @@ export default function App() {
             currentUser={user}
           />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
         );
 
       case 'cart':
@@ -374,7 +379,11 @@ export default function App() {
             onItemStatusUpdate={handleItemStatusUpdate}
           />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
         );
 
       case 'seller-profile':
@@ -389,9 +398,17 @@ export default function App() {
 
       case 'reviews':
         return selectedProductId ? (
-          <ReviewPage productId={selectedProductId} onNavigate={handleNavigate} currentUser={user} />
+          <ReviewPage
+            productId={selectedProductId}
+            onNavigate={handleNavigate}
+            currentUser={user}
+          />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
         );
 
       case 'customer-profile':
@@ -456,37 +473,28 @@ export default function App() {
 
       case 'seller-order-management':
         return isSeller ? (
-          <div className="min-h-screen bg-soft-cream py-8 px-4">
-            <div className="max-w-6xl mx-auto">
-              <h1 className="font-['Poppins'] text-3xl mb-6">Order Management</h1>
-              <p className="text-sm text-foreground/60 mb-6">
-                Enhanced seller order management would go here. This would include:
-                <br />• Bulk order processing
-                <br />• Individual item status updates
-                <br />• Inventory alerts
-                <br />• Customer communication
-                <br />• Shipping label generation
-                <br />• Analytics and reports
-              </p>
-              <div>
-                <button
-                  onClick={() => handleNavigate('seller-dashboard')}
-                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90"
-                >
-                  Back to Dashboard
-                </button>
-              </div>
-            </div>
-          </div>
+          <SellerOrdersPage currentUser={user} onNavigate={handleNavigate} />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
         );
 
       case 'seller-profile-edit':
         return isSeller ? (
-          <SellerProfile currentUser={user} onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
+          <SellerProfile
+            currentUser={user}
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+          />
         ) : (
-          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
         );
 
       case 'style-guide':
@@ -499,7 +507,13 @@ export default function App() {
         return <FaqPage onNavigate={handleNavigate} />;
 
       default:
-        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />;
+        return (
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
+        );
     }
   };
 
@@ -527,7 +541,11 @@ export default function App() {
 
       <main>{renderPage()}</main>
 
-      <Footer onNavigate={handleNavigate} isLoggedIn={isLoggedIn} currentUserRole={user?.role} />
+      <Footer
+        onNavigate={handleNavigate}
+        isLoggedIn={isLoggedIn}
+        currentUserRole={user?.role}
+      />
 
       <Toaster
         position="bottom-right"
