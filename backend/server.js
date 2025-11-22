@@ -421,10 +421,25 @@ app.patch("/api/sellers/:id", async (req, res) => {
 
 // ----- REVIEWS -----
 
-// Reviews for a product
+// Reviews for a product (one per customerId, show latest)
 app.get("/api/products/:id/reviews", async (req, res) => {
   try {
-    const reviews = await Review.find({ productId: req.params.id }).lean();
+    const productId = req.params.id;
+
+    // get all, newest first
+    const raw = await Review.find({ productId })
+      .sort({ date: -1 })
+      .lean();
+
+    // keep only the latest review per customerId
+    const map = new Map(); // customerId -> review
+    for (const r of raw) {
+      if (!map.has(r.customerId)) {
+        map.set(r.customerId, r);
+      }
+    }
+
+    const reviews = Array.from(map.values());
     res.json(reviews);
   } catch (err) {
     console.error("Error fetching reviews:", err);
@@ -432,21 +447,84 @@ app.get("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
-// Create a review for a product
+
+// Create OR update a review for a product (one review per user)
+// and keep Product.rating as the average of unique (latest) reviews
 app.post("/api/products/:id/reviews", async (req, res) => {
   try {
-    const newId = generateId("r");
-    const review = await Review.create({
-      ...req.body,
-      id: newId,
-      productId: req.params.id
-    });
-    res.status(201).json(review);
+    const productId = req.params.id;
+    const { rating, comment, customerId, customerName } = req.body;
+
+    // basic validation
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "Rating must be between 1 and 5" });
+    }
+    if (!customerId) {
+      return res.status(400).json({ error: "customerId is required" });
+    }
+
+    // 1) check if this user already reviewed this product
+    let existing = await Review.findOne({ productId, customerId });
+
+    let review;
+    if (existing) {
+      // update existing review
+      existing.rating = rating;
+      existing.comment = comment;
+      existing.customerName = customerName || existing.customerName;
+      existing.date = new Date().toISOString();
+      await existing.save();
+      review = existing;
+    } else {
+      // create new review
+      const newId = generateId("r");
+      review = await Review.create({
+        id: newId,
+        productId,
+        customerId,
+        customerName,
+        rating,
+        comment,
+        date: new Date().toISOString(),
+      });
+    }
+
+    // 2) recompute average rating using ONLY the latest review per customer
+    const raw = await Review.find({ productId })
+      .sort({ date: -1 })  // newest first
+      .lean();
+
+    const map = new Map(); // customerId -> latest review
+    for (const r of raw) {
+      if (!map.has(r.customerId)) {
+        map.set(r.customerId, r);
+      }
+    }
+
+    const uniqueReviews = Array.from(map.values());
+    const avgRating =
+      uniqueReviews.length > 0
+        ? uniqueReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
+          uniqueReviews.length
+        : 0;
+
+    // 3) store the new average on the product
+    await Product.findOneAndUpdate(
+      { id: productId },
+      { rating: avgRating },
+      { new: true }
+    );
+
+    // 4) send back review + new average
+    res.status(existing ? 200 : 201).json({ review, avgRating });
   } catch (err) {
-    console.error("Error creating review:", err);
-    res.status(500).json({ error: "Failed to create review" });
+    console.error("Error creating/updating review:", err);
+    res.status(500).json({ error: "Failed to save review" });
   }
 });
+
+
+
 
 // ----- ORDERS -----
 

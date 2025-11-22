@@ -121,26 +121,31 @@ export default function App() {
   };
 
   const handleNavigate = (page: string, idOrCategory?: string) => {
-    setCurrentPage(page);
+  setCurrentPage(page);
 
-    if (page === 'product-details' || page === 'seller-profile') {
-      setSelectedProductId(idOrCategory);
-    } else {
-      setSelectedProductId(undefined);
-    }
+  if (
+    page === 'product-details' ||
+    page === 'seller-profile' ||
+    page === 'reviews'          // 👈 NEW: keep productId when going to reviews page
+  ) {
+    setSelectedProductId(idOrCategory);
+  } else {
+    setSelectedProductId(undefined);
+  }
 
-    if (page === 'products') {
-      setSelectedCategory(idOrCategory);
-    } else {
-      setSelectedCategory(undefined);
-    }
+  if (page === 'products') {
+    setSelectedCategory(idOrCategory);
+  } else {
+    setSelectedCategory(undefined);
+  }
 
-    const skipScrollToTop = page === 'home' && idOrCategory === 'keepScroll';
+  const skipScrollToTop = page === 'home' && idOrCategory === 'keepScroll';
 
-    if (!skipScrollToTop) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
+  if (!skipScrollToTop) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+};
+
 
   const handleAddToCart = async (product: Product, quantity: number = 1) => {
     console.log('🛒 === ADD TO CART DEBUG ===');
@@ -344,8 +349,21 @@ export default function App() {
           />
         );
 
-      case 'reviews':
-        return <ReviewPage onNavigate={handleNavigate} />;
+          case 'reviews':
+      return selectedProductId ? (
+        <ReviewPage
+          productId={selectedProductId}
+          onNavigate={handleNavigate}
+          currentUser={user}
+        />
+      ) : (
+        <HomePage
+          onNavigate={handleNavigate}
+          onAddToCart={handleAddToCart}
+          currentUser={user}
+        />
+      );
+
 
       case 'customer-profile':
         return (
