@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Star,
   ShoppingCart,
-  Heart,
   Share2,
   MapPin,
   Mail,
@@ -55,6 +54,30 @@ interface ProductDetailsPageProps {
   } | null;
 }
 
+// Match your App.tsx OrderItem shape
+interface OrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  sellerId?: string;
+  sellerName?: string;
+  itemStatus?: string;
+}
+
+// Match your Order shape
+interface CustomerOrder {
+  id: string;
+  customerId: string;
+  customerName: string;
+  items: OrderItem[];
+  total: number;
+  status: string;
+  date: string;
+  shippingAddress?: string;
+  paymentMethod?: string;
+}
+
 export function ProductDetailsPage({
   productId,
   onNavigate,
@@ -69,23 +92,24 @@ export function ProductDetailsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // who can do what
+  const [hasPurchasedProduct, setHasPurchasedProduct] = useState(false);
+  const [checkingPurchase, setCheckingPurchase] = useState(false);
+
   const isCustomer = isLoggedIn && currentUser?.role === 'customer';
   const isSeller = currentUser?.role === 'seller';
 
+  // ===== LOAD PRODUCT + SELLER + REVIEWS =====
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
         setError(null);
 
-        // 1) product
         const prodRes = await fetch(`${API_BASE_URL}/api/products/${productId}`);
         if (!prodRes.ok) throw new Error('Failed to load product');
         const prodData: Product = await prodRes.json();
         setProduct(prodData);
 
-        // 2) seller info
         if (prodData.sellerId) {
           try {
             const sellerRes = await fetch(
@@ -100,7 +124,6 @@ export function ProductDetailsPage({
           }
         }
 
-        // 3) reviews
         const reviewsRes = await fetch(
           `${API_BASE_URL}/api/products/${productId}/reviews`,
         );
@@ -123,6 +146,93 @@ export function ProductDetailsPage({
     }
   }, [productId]);
 
+  // ===== CHECK IF LOGGED-IN CUSTOMER PURCHASED THIS PRODUCT =====
+  useEffect(() => {
+    const fetchCustomerOrders = async () => {
+      if (!isCustomer || !currentUser?.id || !productId) {
+        setHasPurchasedProduct(false);
+        return;
+      }
+
+      setCheckingPurchase(true);
+
+      try {
+        const candidateUrls = [
+          `${API_BASE_URL}/api/users/${currentUser.id}/orders`,
+          `${API_BASE_URL}/api/customers/${currentUser.id}/orders`,
+          `${API_BASE_URL}/api/orders?customerId=${currentUser.id}`,
+        ];
+
+        let orders: CustomerOrder[] = [];
+        let successfulUrl: string | null = null;
+
+        for (const url of candidateUrls) {
+          try {
+            console.log('🧾 Trying orders URL:', url);
+            const res = await fetch(url);
+            console.log('   → status:', res.status);
+            if (!res.ok) continue;
+
+            const raw = await res.json();
+            console.log('   → raw response:', raw);
+
+            const parsed: CustomerOrder[] = Array.isArray(raw)
+              ? raw
+              : Array.isArray(raw?.orders)
+              ? raw.orders
+              : [];
+
+            if (parsed.length > 0) {
+              orders = parsed;
+              successfulUrl = url;
+              break;
+            }
+          } catch (innerErr) {
+            console.warn('   → failed to parse this URL, trying next', innerErr);
+          }
+        }
+
+        if (!successfulUrl) {
+          console.warn('⚠️ No orders endpoint returned usable data');
+          setHasPurchasedProduct(false);
+          return;
+        }
+
+        console.log('✅ Using orders from:', successfulUrl);
+        console.log('✅ Normalized orders:', orders);
+
+        const normalizedTargetId = String(productId);
+
+        const purchased = orders.some(order =>
+          (order.items || []).some((item: OrderItem) => {
+            const normalizedItemId = String(item.productId);
+            const match = normalizedItemId === normalizedTargetId;
+
+            if (match) {
+              console.log('🎯 Match found in order:', {
+                orderId: order.id,
+                itemProductId: item.productId,
+                targetProductId: normalizedTargetId,
+              });
+            }
+
+            return match;
+          }),
+        );
+
+        console.log('✅ Final hasPurchasedProduct =', purchased);
+        setHasPurchasedProduct(purchased);
+      } catch (err) {
+        console.error('❌ Error checking purchase history:', err);
+        setHasPurchasedProduct(false);
+      } finally {
+        setCheckingPurchase(false);
+      }
+    };
+
+    fetchCustomerOrders();
+  }, [isCustomer, currentUser?.id, productId]);
+
   const handleAddToCart = () => {
     if (product && isCustomer) {
       onAddToCart(product, quantity);
@@ -133,7 +243,12 @@ export function ProductDetailsPage({
     onNavigate('products');
   };
 
-  // loading
+  const goToWriteReview = () => {
+    if (!hasPurchasedProduct || !product) return;
+    onNavigate('reviews', product.id);
+  };
+
+  // ===== LOADING / ERROR =====
   if (loading) {
     return (
       <div className="min-h-screen bg-soft-cream py-8 px-4">
@@ -150,7 +265,6 @@ export function ProductDetailsPage({
     );
   }
 
-  // error / not found
   if (error || !product) {
     return (
       <div className="min-h-screen bg-soft-cream py-8 px-4">
@@ -167,9 +281,6 @@ export function ProductDetailsPage({
     );
   }
 
-  // ⭐ average rating:
-  // - if there are user reviews, use their mean
-  // - otherwise fall back to the product's existing rating
   const avgRating =
     reviews.length > 0
       ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length
@@ -178,15 +289,13 @@ export function ProductDetailsPage({
   return (
     <div className="min-h-screen bg-soft-cream py-8 px-4">
       <div className="max-w-7xl mx-auto">
-        {/* Back */}
         <Button variant="ghost" onClick={handleBack} className="mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Marketplace
         </Button>
 
-        {/* Top section */}
         <div className="grid md:grid-cols-2 gap-12 mb-12">
-          {/* Image */}
+          {/* IMAGE */}
           <div>
             <div className="relative rounded-2xl overflow-hidden bg-white border border-border shadow-lg">
               <ImageWithFallback
@@ -197,7 +306,7 @@ export function ProductDetailsPage({
             </div>
           </div>
 
-          {/* Info */}
+          {/* INFO */}
           <div className="space-y-6">
             <div>
               <Badge className="mb-3 bg-secondary text-secondary-foreground">
@@ -237,7 +346,7 @@ export function ProductDetailsPage({
               {product.description || 'No description provided for this product.'}
             </p>
 
-            {/* Stock */}
+            {/* STOCK */}
             <div className="flex items-center space-x-2">
               <div
                 className={`w-2 h-2 rounded-full ${
@@ -257,12 +366,11 @@ export function ProductDetailsPage({
               </span>
             </div>
 
-            {/* Customer actions */}
+            {/* CUSTOMER ACTIONS */}
             {isCustomer && (
               <>
                 <Separator />
 
-                {/* Quantity */}
                 <div className="space-y-3">
                   <label className="font-['Lato']">Quantity</label>
                   <div className="flex items-center space-x-4">
@@ -297,7 +405,6 @@ export function ProductDetailsPage({
                   </div>
                 </div>
 
-                {/* Buttons */}
                 <div className="flex gap-4">
                   <Button
                     className="flex-1 bg-primary hover:bg-primary/90 h-12"
@@ -317,18 +424,15 @@ export function ProductDetailsPage({
               </>
             )}
 
-            {/* Seller logged in */}
             {isSeller && (
               <Card className="p-4 bg-blue-50 border border-blue-200">
                 <p className="text-sm text-blue-800">
                   <strong>Seller Account:</strong> You cannot purchase items as
-                  you are logged in as a seller. This product is available for
-                  customers to purchase.
+                  you are logged in as a seller.
                 </p>
               </Card>
             )}
 
-            {/* Not logged in */}
             {!isLoggedIn && (
               <Card className="p-4 bg-gray-50 border border-gray-200">
                 <p className="text-sm text-gray-700 mb-3">
@@ -340,7 +444,6 @@ export function ProductDetailsPage({
               </Card>
             )}
 
-            {/* Seller info */}
             {seller && (
               <Card className="p-6 bg-white border border-border">
                 <div className="flex items-start justify-between mb-4">
@@ -406,7 +509,7 @@ export function ProductDetailsPage({
           </div>
         </div>
 
-        {/* Reviews */}
+        {/* REVIEWS */}
         <Card className="p-8 bg-white border border-border">
           <h2 className="font-['Poppins'] text-2xl mb-6">Customer Reviews</h2>
 
@@ -454,12 +557,19 @@ export function ProductDetailsPage({
               <p className="text-foreground/70 mb-4">No reviews yet</p>
 
               {isCustomer ? (
-                <Button
-                  variant="outline"
-                  onClick={() => onNavigate('reviews', product.id)}
-                >
-                  Be the first to review
-                </Button>
+                hasPurchasedProduct ? (
+                  <Button
+                    variant="outline"
+                    onClick={goToWriteReview}
+                    disabled={checkingPurchase}
+                  >
+                    {checkingPurchase ? 'Checking eligibility...' : 'Be the first to review'}
+                  </Button>
+                ) : (
+                  <p className="text-sm text-foreground/70">
+                    You can only review this product after purchasing it.
+                  </p>
+                )
               ) : !isLoggedIn ? (
                 <div className="space-y-3">
                   <p className="text-sm text-foreground/70">
@@ -482,15 +592,27 @@ export function ProductDetailsPage({
             </div>
           )}
 
-          {/* Bottom Write Review button */}
           {isCustomer && (
-            <Button
-              variant="outline"
-              className="w-full mt-6"
-              onClick={() => onNavigate('reviews', product.id)}
-            >
-              Write a Review
-            </Button>
+            <div className="mt-6 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={goToWriteReview}
+                disabled={!hasPurchasedProduct || checkingPurchase}
+              >
+                {checkingPurchase
+                  ? 'Checking eligibility...'
+                  : hasPurchasedProduct
+                  ? 'Write a Review'
+                  : 'You must purchase this product to write a review'}
+              </Button>
+              {!hasPurchasedProduct && !checkingPurchase && (
+                <p className="text-xs text-center text-foreground/60">
+                  Reviews are limited to customers who have previously purchased
+                  this product.
+                </p>
+              )}
+            </div>
           )}
 
           {!isLoggedIn && (

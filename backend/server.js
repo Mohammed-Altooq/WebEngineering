@@ -528,7 +528,24 @@ app.post("/api/products/:id/reviews", async (req, res) => {
 
 // ----- ORDERS -----
 
-// Get all orders for a user
+// NEW: Get all orders for a user (this is what the frontend expects)
+// GET /api/users/:userId/orders
+app.get("/api/users/:userId/orders", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log('📦 Fetching orders for user (customerId):', userId);
+
+    const orders = await Order.find({ customerId: userId }).lean();
+    console.log(`📦 Found ${orders.length} orders for user`);
+
+    res.json(orders);
+  } catch (err) {
+    console.error("Error fetching user orders:", err);
+    res.status(500).json({ error: "Failed to fetch user orders" });
+  }
+});
+
+// Existing: Get all orders for a user (legacy route)
 app.get("/api/orders/user/:userId", async (req, res) => {
   try {
     const orders = await Order.find({ customerId: req.params.userId }).lean();
