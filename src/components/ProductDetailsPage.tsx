@@ -18,6 +18,9 @@ import { Avatar, AvatarFallback } from './ui/avatar';
 import type { Product } from '../lib/mockData';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
+// ✅ NEW: use the shared authFetch helper for protected endpoints
+import { authFetch } from '../lib/api';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 interface Review {
@@ -105,6 +108,7 @@ export function ProductDetailsPage({
         setLoading(true);
         setError(null);
 
+        // Public: no auth needed
         const prodRes = await fetch(`${API_BASE_URL}/api/products/${productId}`);
         if (!prodRes.ok) throw new Error('Failed to load product');
         const prodData: Product = await prodRes.json();
@@ -124,6 +128,7 @@ export function ProductDetailsPage({
           }
         }
 
+        // Public: reviews listing is also typically public
         const reviewsRes = await fetch(
           `${API_BASE_URL}/api/products/${productId}/reviews`,
         );
@@ -146,7 +151,7 @@ export function ProductDetailsPage({
     }
   }, [productId]);
 
-  // ===== CHECK IF LOGGED-IN CUSTOMER PURCHASED THIS PRODUCT =====
+  // ===== CHECK IF LOGGED-IN CUSTOMER PURCHASED THIS PRODUCT (PROTECTED ENDPOINT) =====
   useEffect(() => {
     const fetchCustomerOrders = async () => {
       if (!isCustomer || !currentUser?.id || !productId) {
@@ -157,10 +162,11 @@ export function ProductDetailsPage({
       setCheckingPurchase(true);
 
       try {
+        // Use relative paths so authFetch will prepend API_BASE_URL and add Authorization header
         const candidateUrls = [
-          `${API_BASE_URL}/api/users/${currentUser.id}/orders`,
-          `${API_BASE_URL}/api/customers/${currentUser.id}/orders`,
-          `${API_BASE_URL}/api/orders?customerId=${currentUser.id}`,
+          `/api/users/${currentUser.id}/orders`,
+          `/api/customers/${currentUser.id}/orders`,
+          `/api/orders?customerId=${currentUser.id}`,
         ];
 
         let orders: CustomerOrder[] = [];
@@ -169,7 +175,7 @@ export function ProductDetailsPage({
         for (const url of candidateUrls) {
           try {
             console.log('🧾 Trying orders URL:', url);
-            const res = await fetch(url);
+            const res = await authFetch(url); // ✅ now includes JWT
             console.log('   → status:', res.status);
             if (!res.ok) continue;
 
@@ -178,8 +184,8 @@ export function ProductDetailsPage({
 
             const parsed: CustomerOrder[] = Array.isArray(raw)
               ? raw
-              : Array.isArray(raw?.orders)
-              ? raw.orders
+              : Array.isArray((raw as any)?.orders)
+              ? (raw as any).orders
               : [];
 
             if (parsed.length > 0) {

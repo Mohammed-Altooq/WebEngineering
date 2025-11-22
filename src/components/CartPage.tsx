@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Separator } from './ui/separator';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { authFetch } from '../lib/api';
 
 const API_BASE_URL = 'http://localhost:3000';
 
@@ -40,7 +41,7 @@ export function CartPage({ onNavigate, currentUser }: CartPageProps) {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/cart`);
+        const response = await authFetch(`/api/users/${currentUser.id}/cart`);
         if (response.ok) {
           const responseText = await response.text();
           try {
@@ -69,13 +70,11 @@ export function CartPage({ onNavigate, currentUser }: CartPageProps) {
     if (!currentUser?.id) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/cart/${productId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ quantity: newQuantity })
-      });
+      const response = await authFetch(`/api/users/${currentUser.id}/cart/${productId}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ quantity: newQuantity })
+});
+
 
       if (response.ok) {
         // Update local state
@@ -97,9 +96,10 @@ export function CartPage({ onNavigate, currentUser }: CartPageProps) {
     if (!currentUser?.id) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/cart/${productId}`, {
-        method: 'DELETE'
-      });
+      const response = await authFetch(`/api/users/${currentUser.id}/cart/${productId}`, {
+  method: 'DELETE'
+});
+
 
       if (response.ok) {
         // Update local state

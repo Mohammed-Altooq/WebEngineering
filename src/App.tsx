@@ -12,13 +12,14 @@ import { SellerProfilePage } from './components/SellerProfilePage';
 import { ReviewPage } from './components/ReviewPage';
 import { StyleGuide } from './components/StyleGuide';
 import { CustomerProfile } from './components/customerProfile';
-import { SellerProfile } from './components/sellerProfile'; 
+import { SellerProfile } from './components/sellerProfile';
 import { Product } from './lib/mockData';
 import { Toaster } from './components/ui/sonner';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { RegisterPage } from './components/RegisterPage';
 import { AboutPage } from './components/AboutPage';
 import { FaqPage } from './components/FaqPage';
+import { authFetch } from './lib/api';
 
 // Using Vite proxy - requests will be forwarded to Express server
 const API_BASE_URL = '';
@@ -93,13 +94,14 @@ export default function App() {
 
       try {
         console.log('🛒 Loading cart for user:', user.id);
-        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/cart`);
+        // ✅ use authFetch so Authorization header is included
+        const response = await authFetch(`/api/users/${user.id}/cart`);
         console.log('Cart response status:', response.status);
-        
+
         if (response.ok) {
           const responseText = await response.text();
           console.log('Cart response:', responseText);
-          
+
           try {
             const cartData = JSON.parse(responseText);
             const items = cartData.items || [];
@@ -146,7 +148,7 @@ export default function App() {
 
   const handleNavigate = (page: string, idOrCategory?: string) => {
     console.log('🧭 Navigating to:', page, 'with param:', idOrCategory);
-    
+
     setCurrentPage(page);
 
     if (
@@ -156,10 +158,7 @@ export default function App() {
     ) {
       setSelectedProductId(idOrCategory);
       setSelectedOrderId(undefined);
-    } else if (
-      page === 'order-details' ||
-      page === 'track-order'
-    ) {
+    } else if (page === 'order-details' || page === 'track-order') {
       setSelectedOrderId(idOrCategory);
       setSelectedProductId(undefined);
     } else {
@@ -201,20 +200,21 @@ export default function App() {
         image: product.image,
         sellerName: product.sellerName,
         quantity,
-        stock: product.stock
+        stock: product.stock,
       };
 
       console.log('📦 Cart item to add:', cartItem);
 
-      const apiUrl = `${API_BASE_URL}/api/users/${user.id}/cart`;
+      const apiUrl = `/api/users/${user.id}/cart`;
       console.log('🔗 API URL:', apiUrl);
 
-      const addResponse = await fetch(apiUrl, {
+      // ✅ use authFetch so Authorization header is included
+      const addResponse = await authFetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(cartItem)
+        body: JSON.stringify(cartItem),
       });
 
       console.log('📡 Response status:', addResponse.status);
@@ -246,7 +246,7 @@ export default function App() {
         }
 
         // Fallback: reload cart from backend
-        const updatedCartResponse = await fetch(`${API_BASE_URL}/api/users/${user.id}/cart`);
+        const updatedCartResponse = await authFetch(`/api/users/${user.id}/cart`);
         if (updatedCartResponse.ok) {
           const cartText = await updatedCartResponse.text();
           try {
@@ -266,7 +266,6 @@ export default function App() {
         console.error('❌ Failed to add to cart:', addResponse.status, addText);
         throw new Error(`Failed to add item to cart: ${addResponse.status} - ${addText}`);
       }
-
     } catch (error: any) {
       console.error('❌ Error adding to cart:', error);
       toast.error(`Failed to add item to cart: ${error.message}`);
@@ -275,29 +274,26 @@ export default function App() {
 
   const refreshOrders = async () => {
     console.log('🔄 Refreshing orders...');
-    // This will trigger a re-fetch in components that show orders
-    // You could also maintain order state here if needed
+    // Placeholder – order state is managed inside profile/dashboard components
   };
 
   const handleOrderStatusUpdate = (orderId: string, newStatus: string) => {
     console.log('📋 Order status updated:', orderId, '→', newStatus);
     toast.success('Order status updated successfully!');
-    // Could trigger state updates here if maintaining order state
   };
 
   const handleItemStatusUpdate = (orderId: string, productId: string, newStatus: string) => {
     console.log('📦 Item status updated:', orderId, productId, '→', newStatus);
     toast.success('Item status updated successfully!');
-    // Could trigger state updates here if maintaining order state
   };
 
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
         return (
-          <HomePage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart} 
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
             currentUser={user}
           />
         );
@@ -307,7 +303,7 @@ export default function App() {
           <LoginPage
             onNavigate={handleNavigate}
             onLogin={handleLogin}
-            isLoggedIn={isLoggedIn}           
+            isLoggedIn={isLoggedIn}
             currentUserRole={user?.role}
           />
         );
@@ -342,20 +338,11 @@ export default function App() {
             currentUser={user}
           />
         ) : (
-          <HomePage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart} 
-            currentUser={user} 
-          />
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
         );
 
       case 'cart':
-        return (
-          <CartPage
-            onNavigate={handleNavigate}
-            currentUser={user}
-          />
-        );
+        return <CartPage onNavigate={handleNavigate} currentUser={user} />;
 
       case 'checkout': {
         const items = cartItems;
@@ -380,18 +367,14 @@ export default function App() {
 
       case 'seller-dashboard':
         return isSeller ? (
-          <SellerDashboard 
-            onNavigate={handleNavigate} 
+          <SellerDashboard
+            onNavigate={handleNavigate}
             currentUser={user}
             onOrderStatusUpdate={handleOrderStatusUpdate}
             onItemStatusUpdate={handleItemStatusUpdate}
           />
         ) : (
-          <HomePage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart} 
-            currentUser={user} 
-          />
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
         );
 
       case 'seller-profile':
@@ -406,36 +389,15 @@ export default function App() {
 
       case 'reviews':
         return selectedProductId ? (
-          <ReviewPage
-            productId={selectedProductId}
-            onNavigate={handleNavigate}
-            currentUser={user}
-          />
+          <ReviewPage productId={selectedProductId} onNavigate={handleNavigate} currentUser={user} />
         ) : (
-          <HomePage
-            onNavigate={handleNavigate}
-            onAddToCart={handleAddToCart}
-            currentUser={user}
-          />
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
         );
 
       case 'customer-profile':
-        return (
-          <CustomerProfile
-            currentUser={user}
-            onNavigate={handleNavigate}
-          />
-        );
-
       case 'customer-orders':
-        return (
-          <CustomerProfile
-            currentUser={user}
-            onNavigate={handleNavigate}
-          />
-        );
+        return <CustomerProfile currentUser={user} onNavigate={handleNavigate} />;
 
-      // NEW ORDER MANAGEMENT PAGES
       case 'order-details':
         return selectedOrderId ? (
           <div className="min-h-screen bg-soft-cream py-8 px-4">
@@ -517,31 +479,19 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <HomePage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart} 
-            currentUser={user} 
-          />
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
         );
 
       case 'seller-profile-edit':
         return isSeller ? (
-          <SellerProfile
-            currentUser={user}
-            onNavigate={handleNavigate}
-            onAddToCart={handleAddToCart}
-          />
+          <SellerProfile currentUser={user} onNavigate={handleNavigate} onAddToCart={handleAddToCart} />
         ) : (
-          <HomePage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart} 
-            currentUser={user} 
-          />
+          <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />
         );
 
       case 'style-guide':
         return <StyleGuide />;
-      
+
       case 'about':
         return <AboutPage onNavigate={handleNavigate} />;
 
@@ -549,13 +499,7 @@ export default function App() {
         return <FaqPage onNavigate={handleNavigate} />;
 
       default:
-        return (
-          <HomePage 
-            onNavigate={handleNavigate} 
-            onAddToCart={handleAddToCart} 
-            currentUser={user} 
-          />
-        );
+        return <HomePage onNavigate={handleNavigate} onAddToCart={handleAddToCart} currentUser={user} />;
     }
   };
 
@@ -583,11 +527,7 @@ export default function App() {
 
       <main>{renderPage()}</main>
 
-      <Footer 
-        onNavigate={handleNavigate}  
-        isLoggedIn={isLoggedIn}
-        currentUserRole={user?.role}
-      />
+      <Footer onNavigate={handleNavigate} isLoggedIn={isLoggedIn} currentUserRole={user?.role} />
 
       <Toaster
         position="bottom-right"

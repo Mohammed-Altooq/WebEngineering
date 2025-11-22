@@ -1,3 +1,4 @@
+// src/components/CheckoutPage.tsx
 import { useState, useEffect } from 'react';
 import { CreditCard, MapPin, CheckCircle } from 'lucide-react';
 import { Button } from './ui/button';
@@ -7,20 +8,21 @@ import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { toast } from 'sonner';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+import { authFetch } from '../lib/api'; // ✅ use authFetch so JWT is sent
 
 interface CheckoutPageProps {
   cartItems: any[];
   cartTotal: number;
   onNavigate: (page: string) => void;
-  currentUser?: { 
-    id: string; 
-    name: string; 
-    role: string;
-    email: string;
-    phone?: string; 
-  } | null;
+  currentUser?:
+    | {
+        id: string;
+        name: string;
+        role: string;
+        email: string;
+        phone?: string;
+      }
+    | null;
   onCartCleared?: () => void;
 }
 
@@ -74,7 +76,9 @@ export function CheckoutPage({
   const handlePhoneChange = (value: string) => {
     setPhoneNum(value);
     if (value && !validatePhoneNumber(value)) {
-      setPhoneError('Please enter a valid Bahrain phone number (8 digits or +973 XXXXXXXX)');
+      setPhoneError(
+        'Please enter a valid Bahrain phone number (8 digits or +973 XXXXXXXX)',
+      );
     } else {
       setPhoneError('');
     }
@@ -87,7 +91,8 @@ export function CheckoutPage({
 
   const handleCardNumberChange = (value: string) => {
     const formatted = formatCardNumber(value.replace(/[^0-9]/g, ''));
-    if (formatted.length <= 19) { // 16 digits + 3 spaces
+    if (formatted.length <= 19) {
+      // 16 digits + 3 spaces
       setCardNumber(formatted);
     }
   };
@@ -153,9 +158,11 @@ export function CheckoutPage({
     try {
       setIsPlacing(true);
 
-      const shippingAddress = `${address}, ${city}${postalCode ? ` ${postalCode}` : ''}`;
+      const shippingAddress = `${address}, ${city}${
+        postalCode ? ` ${postalCode}` : ''
+      }`;
 
-      // 1) CREATE ORDER
+      // 1) CREATE ORDER  ✅ now using authFetch (sends Bearer token)
       const orderPayload = {
         customerName: `${firstName} ${lastName}`.trim() || currentUser.name,
         items: cartItems.map((item) => ({
@@ -171,7 +178,7 @@ export function CheckoutPage({
         paymentMethod: paymentMethod === 'card' ? 'Credit Card' : 'Cash on Delivery',
       };
 
-      const orderRes = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/orders`, {
+      const orderRes = await authFetch(`/api/users/${currentUser.id}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderPayload),
@@ -194,17 +201,23 @@ export function CheckoutPage({
           try {
             if (!item.productId) return;
 
-            const prodRes = await fetch(`${API_BASE_URL}/api/products/${item.productId}`);
+            const prodRes = await authFetch(
+              `/api/products/${item.productId}`,
+            );
             if (!prodRes.ok) {
-              console.warn('Could not load product to update stock:', item.productId);
+              console.warn(
+                'Could not load product to update stock:',
+                item.productId,
+              );
               return;
             }
 
             const product = await prodRes.json();
-            const currentStock = typeof product.stock === 'number' ? product.stock : 0;
+            const currentStock =
+              typeof product.stock === 'number' ? product.stock : 0;
             const newStock = Math.max(0, currentStock - (item.quantity || 0));
 
-            await fetch(`${API_BASE_URL}/api/products/${item.productId}`, {
+            await authFetch(`/api/products/${item.productId}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ stock: newStock }),
@@ -218,24 +231,29 @@ export function CheckoutPage({
           } catch (err) {
             console.error('Error updating product stock:', err);
           }
-        })
+        }),
       );
 
       // 3) UPDATE SELLERS totalSales
       await Promise.all(
         Object.entries(sellerRevenue).map(async ([sellerId, revenue]) => {
           try {
-            const sellerRes = await fetch(`${API_BASE_URL}/api/sellers/${sellerId}`);
+            const sellerRes = await authFetch(`/api/sellers/${sellerId}`);
             if (!sellerRes.ok) {
-              console.warn('Could not load seller to update totalSales:', sellerId);
+              console.warn(
+                'Could not load seller to update totalSales:',
+                sellerId,
+              );
               return;
             }
 
             const seller = await sellerRes.json();
             const currentTotal =
-              typeof seller.totalSales === 'number' ? seller.totalSales : 0;
+              typeof seller.totalSales === 'number'
+                ? seller.totalSales
+                : 0;
 
-            await fetch(`${API_BASE_URL}/api/sellers/${sellerId}`, {
+            await authFetch(`/api/sellers/${sellerId}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ totalSales: currentTotal + revenue }),
@@ -243,13 +261,16 @@ export function CheckoutPage({
           } catch (err) {
             console.error('Error updating seller totalSales:', err);
           }
-        })
+        }),
       );
 
       // 4) CLEAR CART IN BACKEND
-      const clearRes = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/cart`, {
-        method: 'DELETE',
-      });
+      const clearRes = await authFetch(
+        `/api/users/${currentUser.id}/cart`,
+        {
+          method: 'DELETE',
+        },
+      );
 
       if (!clearRes.ok) {
         const txt = await clearRes.text();

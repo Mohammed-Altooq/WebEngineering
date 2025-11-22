@@ -48,80 +48,86 @@ export function LoginPage({
   }, [isLoggedIn, currentUserRole, onNavigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  e.preventDefault();
+  setError(null);
+  setLoading(true);
 
-    // Basic validation
-    if (!email.trim() || !password.trim()) {
-      setError('Please fill in all fields');
-      setLoading(false);
+  // Basic validation
+  if (!email.trim() || !password.trim()) {
+    setError('Please fill in all fields');
+    setLoading(false);
+    return;
+  }
+
+  // Email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    setError('Please enter a valid email address');
+    setLoading(false);
+    return;
+  }
+
+  if (password.length < 6) {
+    setError('Password must be at least 6 characters long');
+    setLoading(false);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: email.trim().toLowerCase(), 
+        password 
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || 'Login failed');
       return;
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
-      setLoading(false);
+    // Check if user role matches selected tab
+    if (data.role !== userType) {
+      setError(`This account is registered as a ${data.role}, not a ${userType}. Please select the correct login type.`);
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      setLoading(false);
-      return;
+    // ⭐ NEW: save JWT token so other requests can use it
+    if (data.token) {
+      localStorage.setItem('token', data.token);
     }
 
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: email.trim().toLowerCase(), 
-          password 
-        }),
-      });
+    // Login successful
+    onLogin({
+      id: data.id,
+      name: data.name,
+      role: data.role,
+      email: data.email,
+    });
 
-      const data = await res.json();
+    // Clear form
+    setEmail('');
+    setPassword('');
 
-      if (!res.ok) {
-        setError(data.error || 'Login failed');
-        return;
-      }
-
-      // Check if user role matches selected tab
-      if (data.role !== userType) {
-        setError(`This account is registered as a ${data.role}, not a ${userType}. Please select the correct login type.`);
-        return;
-      }
-
-      // Login successful
-      onLogin({
-        id: data.id,
-        name: data.name,
-        role: data.role,
-        email: data.email,
-      });
-
-      // Clear form
-      setEmail('');
-      setPassword('');
-
-      // Navigate based on role
-      if (data.role === 'seller') {
-        onNavigate('seller-dashboard');
-      } else {
-        onNavigate('home');
-      }
-
-    } catch (err) {
-      console.error('Login error:', err);
-      setError('Something went wrong. Please check your internet connection and try again.');
-    } finally {
-      setLoading(false);
+    // Navigate based on role
+    if (data.role === 'seller') {
+      onNavigate('seller-dashboard');
+    } else {
+      onNavigate('home');
     }
-  };
+
+  } catch (err) {
+    console.error('Login error:', err);
+    setError('Something went wrong. Please check your internet connection and try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // If user is logged in, don't render the login form (useEffect will handle redirect)
   if (isLoggedIn) {

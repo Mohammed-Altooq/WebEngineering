@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { toast } from 'sonner';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+// ✅ Use shared API helpers
+import { authFetch, API_BASE_URL } from '../lib/api';
 
 interface SellerDashboardProps {
   onNavigate: (page: string) => void;
@@ -147,11 +148,11 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     setShowOrderDetails(true);
   };
 
-  // ==== ORDER STATUS MANAGEMENT ====
+  // ==== ORDER STATUS MANAGEMENT (ORDER-LEVEL) ====
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/status`, {
+      const response = await authFetch(`/api/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -176,6 +177,8 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     }
   };
 
+  // ==== ITEM-LEVEL STATUS (PER-SELLER ITEMS) ====
+
   const handleUpdateItemStatus = async (orderId: string, productId: string, newItemStatus: string) => {
     if (!seller?.id) {
       toast.error('Seller information not found');
@@ -195,9 +198,9 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
       };
 
       console.log('📡 Request body:', requestBody);
-      console.log('📡 API URL:', `${API_BASE_URL}/api/orders/${orderId}/items/${productId}/status`);
+      console.log('📡 API URL:', `/api/orders/${orderId}/items/${productId}/status`);
 
-      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/items/${productId}/status`, {
+      const response = await authFetch(`/api/orders/${orderId}/items/${productId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -283,7 +286,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
       try {
         setLoading(true);
 
-        // Find seller by matching email with contactEmail
+        // Public: fetch all sellers
         const sellersResponse = await fetch(`${API_BASE_URL}/api/sellers`);
         if (!sellersResponse.ok) throw new Error('Failed to fetch sellers');
 
@@ -297,16 +300,16 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
         setSeller(currentSeller);
         console.log('✅ Current seller loaded:', currentSeller);
 
-        // Fetch products for this seller
-        const productsResponse = await fetch(`${API_BASE_URL}/api/sellers/${currentSeller.id}/products`);
+        // ✅ Protected: fetch products for this seller
+        const productsResponse = await authFetch(`/api/sellers/${currentSeller.id}/products`);
         if (!productsResponse.ok) throw new Error('Failed to fetch products');
 
         const sellerProducts = await productsResponse.json();
         setProducts(sellerProducts);
         console.log('✅ Seller products loaded:', sellerProducts);
 
-        // Fetch orders for this seller (orders containing their products)
-        const ordersResponse = await fetch(`${API_BASE_URL}/api/sellers/${currentSeller.id}/orders`);
+        // ✅ Protected: fetch orders for this seller (orders containing their products)
+        const ordersResponse = await authFetch(`/api/sellers/${currentSeller.id}/orders`);
         if (ordersResponse.ok) {
           const sellerOrders = await ordersResponse.json();
           console.log('🔍 SELLER ORDERS DEBUG:', sellerOrders);
@@ -418,7 +421,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
         rating: 0
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/products`, {
+      const response = await authFetch('/api/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -485,7 +488,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
         stock: parseInt(editProductForm.stock),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/products/${editingProduct.id}`, {
+      const response = await authFetch(`/api/products/${editingProduct.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -523,7 +526,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
 
   const handleDeleteProduct = async (productId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+      const response = await authFetch(`/api/products/${productId}`, {
         method: 'DELETE'
       });
 

@@ -84,99 +84,109 @@ export function RegisterPage({
   };
 
   const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setLoading(true);
+  e.preventDefault();
+  setError(null);
+  setSuccess(null);
+  setLoading(true);
 
-    try {
-      // Comprehensive validation
-      const nameError = validateName(name);
-      if (nameError) {
-        setError(nameError);
-        return;
-      }
-
-      const emailError = validateEmail(email);
-      if (emailError) {
-        setError(emailError);
-        return;
-      }
-
-      const passwordError = validatePassword(password);
-      if (passwordError) {
-        setError(passwordError);
-        return;
-      }
-
-      if (password !== confirmPassword) {
-        setError('Passwords do not match');
-        return;
-      }
-
-      // If customer is logged in, force seller role
-      const role: 'customer' | 'seller' = (isLoggedIn && currentUserRole === 'customer') ? 'seller' : userType;
-
-      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: name.trim(), 
-          email: email.trim().toLowerCase(), 
-          password, 
-          role 
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        // Handle specific error cases
-        if (res.status === 400 && data.error?.includes('already exists')) {
-          setError('An account with this email already exists. Please use a different email or try logging in.');
-        } else {
-          setError(data.error || 'Failed to register. Please try again.');
-        }
-        return;
-      }
-
-      // Show success message
-      setSuccess(`Welcome ${data.name}! Your account has been created successfully.`);
-
-      // Auto-login the user
-      onLogin({
-        id: data.id,
-        name: data.name,
-        role: data.role,
-        email: data.email,
-      });
-
-      // Clear form
-      setName('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
-
-      // Navigate to appropriate page after a short delay
-      setTimeout(() => {
-        if (role === 'seller') {
-          onNavigate('seller-dashboard');
-        } else {
-          onNavigate('home');
-        }
-      }, 1500);
-
-    } catch (err) {
-      console.error('Register error:', err);
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        setError('Unable to connect to server. Please check your internet connection and try again.');
-      } else {
-        setError('Something went wrong. Please try again later.');
-      }
-    } finally {
-      setLoading(false);
+  try {
+    // Comprehensive validation
+    const nameError = validateName(name);
+    if (nameError) {
+      setError(nameError);
+      return;
     }
-  };
+
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    // If customer is logged in, force seller role
+    const role: 'customer' | 'seller' =
+      isLoggedIn && currentUserRole === 'customer' ? 'seller' : userType;
+
+    const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      // Handle specific error cases
+      if (res.status === 400 && data.error?.includes('already exists')) {
+        setError(
+          'An account with this email already exists. Please use a different email or try logging in.'
+        );
+      } else {
+        setError(data.error || 'Failed to register. Please try again.');
+      }
+      return;
+    }
+
+    // ⭐ NEW: store JWT token so user is authenticated
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+    }
+
+    // Show success message
+    setSuccess(`Welcome ${data.name}! Your account has been created successfully.`);
+
+    // Auto-login the user
+    onLogin({
+      id: data.id,
+      name: data.name,
+      role: data.role,
+      email: data.email,
+    });
+
+    // Clear form
+    setName('');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+
+    // Navigate to appropriate page after a short delay
+    setTimeout(() => {
+      if (role === 'seller') {
+        onNavigate('seller-dashboard');
+      } else {
+        onNavigate('home');
+      }
+    }, 1500);
+  } catch (err) {
+    console.error('Register error:', err);
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      setError(
+        'Unable to connect to server. Please check your internet connection and try again.'
+      );
+    } else {
+      setError('Something went wrong. Please try again later.');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-soft-cream via-warm-sand/30 to-soft-cream py-12 px-4">
