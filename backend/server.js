@@ -3,6 +3,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 
@@ -154,6 +155,48 @@ function generateId(prefix) {
 }
 
 // -------------------
+//  Auth helpers (JWT, middleware, RBAC)
+// -------------------
+function generateToken(user) {
+  return jwt.sign(
+    { id: user.id, role: user.role, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+function auth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // { id, role, email, iat, exp }
+    next();
+  } catch (err) {
+    console.error("JWT verify error:", err);
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: "Forbidden: insufficient role" });
+    }
+    next();
+  };
+}
+
+
+// -------------------
 //  Authentication Routes
 // -------------------
 
@@ -198,13 +241,15 @@ app.post("/api/auth/register", async (req, res) => {
         totalSales: 0
       });
     }
+    const token = generateToken(user);
 
     res.status(201).json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    });
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  token
+});
 
   } catch (err) {
     console.error("Registration error:", err);
@@ -231,12 +276,15 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
+    const token = generateToken(user);
+
     res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    });
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  token
+});
 
   } catch (err) {
     console.error("Login error:", err);
@@ -249,7 +297,10 @@ app.post("/api/auth/login", async (req, res) => {
 // -------------------
 
 // Get user profile by ID
-app.get("/api/users/:userId", async (req, res) => {
+app.get("/api/users/:userId", auth, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ error: "You can only view your own profile" });
+  }
   try {
     const { userId } = req.params;
     const user = await User.findOne({ id: userId }).lean();
@@ -268,7 +319,10 @@ app.get("/api/users/:userId", async (req, res) => {
 });
 
 // Update user profile by ID
-app.put("/api/users/:userId", async (req, res) => {
+app.put("/api/users/:userId", auth, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ error: "You can only update your own profile" });
+  }
   try {
     const { userId } = req.params;
     const { name, email, phone } = req.body;
@@ -330,7 +384,8 @@ app.get("/api/products/:id", async (req, res) => {
 });
 
 // Create a new product
-app.post("/api/products", async (req, res) => {
+app.post("/api/products", auth, requireRole("seller"), async (req, res) => {
+
   try {
     const newId = generateId("p");
     const product = await Product.create({
@@ -345,7 +400,7 @@ app.post("/api/products", async (req, res) => {
 });
 
 // Update product by custom id
-app.patch("/api/products/:id", async (req, res) => {
+app.patch("/api/products/:id", auth, requireRole("seller"), async (req, res) => {
   try {
     const updated = await Product.findOneAndUpdate(
       { id: req.params.id },
@@ -361,7 +416,7 @@ app.patch("/api/products/:id", async (req, res) => {
 });
 
 // Delete product by custom id
-app.delete("/api/products/:id", async (req, res) => {
+app.delete("/api/products/:id", auth, requireRole("seller"), async (req, res) => {
   try {
     const deleted = await Product.findOneAndDelete({ id: req.params.id }).lean();
     if (!deleted) return res.status(404).json({ error: "Product not found" });
@@ -530,9 +585,15 @@ app.post("/api/products/:id/reviews", async (req, res) => {
 
 // NEW: Get all orders for a user (this is what the frontend expects)
 // GET /api/users/:userId/orders
-app.get("/api/users/:userId/orders", async (req, res) => {
+app.get("/api/users/:userId/orders", auth, async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // 🔒 Make sure user can only see their OWN orders
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only view your own orders" });
+    }
+
     console.log('📦 Fetching orders for user (customerId):', userId);
 
     const orders = await Order.find({ customerId: userId }).lean();
@@ -544,6 +605,7 @@ app.get("/api/users/:userId/orders", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch user orders" });
   }
 });
+
 
 // Existing: Get all orders for a user (legacy route)
 app.get("/api/orders/user/:userId", async (req, res) => {
@@ -557,7 +619,7 @@ app.get("/api/orders/user/:userId", async (req, res) => {
 });
 
 // Get orders for a seller (orders containing their products)
-app.get("/api/sellers/:sellerId/orders", async (req, res) => {
+app.get("/api/sellers/:sellerId/orders", auth, requireRole("seller"), async (req, res) => {
   try {
     const { sellerId } = req.params;
     
@@ -616,8 +678,9 @@ app.get("/api/sellers/:sellerId/orders", async (req, res) => {
   }
 });
 
+
 // Update order status (for sellers)
-app.patch("/api/orders/:orderId/status", async (req, res) => {
+app.patch("/api/orders/:orderId/status", auth, requireRole("seller"), async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status } = req.body;
@@ -644,8 +707,9 @@ app.patch("/api/orders/:orderId/status", async (req, res) => {
   }
 });
 
+
 // Update individual item status within an order (for sellers)
-app.patch("/api/orders/:orderId/items/:productId/status", async (req, res) => {
+app.patch("/api/orders/:orderId/items/:productId/status", auth, requireRole("seller"), async (req, res) => {
   try {
     const { orderId, productId } = req.params;
     const { itemStatus, sellerId } = req.body;
@@ -719,9 +783,15 @@ app.patch("/api/orders/:orderId/items/:productId/status", async (req, res) => {
   }
 });
 
+
 // FIXED: Create a new order + update products/sellers + clear cart
-app.post("/api/users/:userId/orders", async (req, res) => {
+app.post("/api/users/:userId/orders", auth, async (req, res) => {
   const { userId } = req.params;
+
+  // 🔒 Ensure the logged-in user is the same as :userId
+  if (req.user.id !== userId) {
+    return res.status(403).json({ error: "You can only create orders for your own account" });
+  }
 
   try {
     const newId = generateId("o");
@@ -812,15 +882,22 @@ app.post("/api/users/:userId/orders", async (req, res) => {
   }
 });
 
+
 // ----- CART (NEW IMPROVED SCHEMA) -----
 
 // Get cart for a user
-app.get("/api/users/:userId/cart", async (req, res) => {
+app.get("/api/users/:userId/cart", auth, async (req, res) => {
   try {
     console.log('=== CART GET ROUTE HIT ===');
     console.log('User ID:', req.params.userId);
-    
+
     const { userId } = req.params;
+
+    // 🔒 User can only see their own cart
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only view your own cart" });
+    }
+
     const cart = await Cart.findOne({ userId }).lean();
     console.log('Cart found:', cart);
     
@@ -837,14 +914,21 @@ app.get("/api/users/:userId/cart", async (req, res) => {
   }
 });
 
+
 // Add item to cart
-app.post("/api/users/:userId/cart", async (req, res) => {
+app.post("/api/users/:userId/cart", auth, async (req, res) => {
   try {
     console.log('=== CART POST ROUTE HIT ===');
     console.log('User ID:', req.params.userId);
     console.log('Request body:', req.body);
     
     const { userId } = req.params;
+
+    // 🔒 User can only modify their own cart
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only modify your own cart" });
+    }
+
     const { productId, name, price, image, sellerName, quantity, stock } = req.body;
 
     let cart = await Cart.findOne({ userId });
@@ -903,10 +987,17 @@ app.post("/api/users/:userId/cart", async (req, res) => {
   }
 });
 
+
 // Update item quantity in cart
-app.patch("/api/users/:userId/cart/:productId", async (req, res) => {
+app.patch("/api/users/:userId/cart/:productId", auth, async (req, res) => {
   try {
     const { userId, productId } = req.params;
+
+    // 🔒 Only owner can change cart
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only modify your own cart" });
+    }
+
     const { quantity } = req.body;
 
     const cart = await Cart.findOne({ userId });
@@ -930,10 +1021,16 @@ app.patch("/api/users/:userId/cart/:productId", async (req, res) => {
   }
 });
 
+
 // Remove item from cart
-app.delete("/api/users/:userId/cart/:productId", async (req, res) => {
+app.delete("/api/users/:userId/cart/:productId", auth, async (req, res) => {
   try {
     const { userId, productId } = req.params;
+
+    // 🔒 Only owner can modify
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only modify your own cart" });
+    }
 
     const cart = await Cart.findOne({ userId });
     if (!cart) {
@@ -951,10 +1048,17 @@ app.delete("/api/users/:userId/cart/:productId", async (req, res) => {
   }
 });
 
+
 // Clear entire cart
-app.delete("/api/users/:userId/cart", async (req, res) => {
+app.delete("/api/users/:userId/cart", auth, async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // 🔒 Only owner can clear their cart
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "You can only clear your own cart" });
+    }
+
     await Cart.findOneAndDelete({ userId });
     res.json({ message: "Cart cleared" });
   } catch (err) {
@@ -962,6 +1066,7 @@ app.delete("/api/users/:userId/cart", async (req, res) => {
     res.status(500).json({ error: "Failed to clear cart" });
   }
 });
+
 
 // -------------------
 //  Start server
