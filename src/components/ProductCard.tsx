@@ -34,6 +34,38 @@ interface ProductCardProps {
   onNavigate?: (page: string) => void;
 }
 
+/**
+ * Map backend category values → nice labels.
+ * Keep this in sync with ProductListingPage CATEGORY_LABELS.
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  // Fresh Produce
+  'Fresh Produce': 'Fresh Produce',
+  'fresh-produce': 'Fresh Produce',
+  'fresh produce': 'Fresh Produce',
+  Vegetables: 'Fresh Produce',
+
+  // Handmade Crafts
+  'Handmade Crafts': 'Handmade Crafts',
+  'handmade-crafts': 'Handmade Crafts',
+
+  // Dairy Products
+  'Dairy Products': 'Dairy Products',
+  'dairy-products': 'Dairy Products',
+  'Dairy & Eggs': 'Dairy Products',
+
+  // Honey & Preserves
+  'Honey & Preserves': 'Honey & Preserves',
+  Honey: 'Honey & Preserves',
+  honey: 'Honey & Preserves',
+  'honey-preserves': 'Honey & Preserves',
+};
+
+const getCategoryLabel = (raw?: string) => {
+  if (!raw) return '';
+  return CATEGORY_LABELS[raw] ?? raw;
+};
+
 export function ProductCard({
   product,
   onClick,
@@ -66,6 +98,8 @@ export function ProductCard({
       onViewSeller(product.sellerId);
     }
   };
+
+  const categoryLabel = getCategoryLabel(product.category);
 
   return (
     <Card 
@@ -111,9 +145,9 @@ export function ProductCard({
         </h3>
 
         {/* Category */}
-        {product.category && (
+        {categoryLabel && (
           <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">
-            {product.category}
+            {categoryLabel}
           </span>
         )}
 
@@ -217,8 +251,6 @@ export function ProductCard({
               Out of Stock
             </Button>
           )}
-
-  
         </div>
 
         {/* User Status Message - UPDATED TO USE isLoggedIn */}

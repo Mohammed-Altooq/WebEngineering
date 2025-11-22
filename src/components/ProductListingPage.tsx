@@ -31,6 +31,43 @@ interface ProductListingPageProps {
   currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
 }
 
+/**
+ * Map any backend category value → one of the 4 official labels.
+ * This way if DB stores "honey", "honey-preserves", etc, the UI always
+ * treats it as "Honey & Preserves".
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  // Fresh Produce
+  'Fresh Produce': 'Fresh Produce',
+  'fresh-produce': 'Fresh Produce',
+  'fresh produce': 'Fresh Produce',
+  Vegetables: 'Fresh Produce',
+
+  // Handmade Crafts
+  'Handmade Crafts': 'Handmade Crafts',
+  'handmade-crafts': 'Handmade Crafts',
+
+  // Dairy Products
+  'Dairy Products': 'Dairy Products',
+  'dairy-products': 'Dairy Products',
+  'Dairy & Eggs': 'Dairy Products',
+
+  // Honey & Preserves
+  'Honey & Preserves': 'Honey & Preserves',
+  Honey: 'Honey & Preserves',
+  honey: 'Honey & Preserves',
+  'honey-preserves': 'Honey & Preserves',
+};
+
+/** The only categories the user can filter by in the UI */
+const CATEGORY_FILTER_OPTIONS = [
+  { value: 'all', label: 'All categories' },
+  { value: 'Fresh Produce', label: 'Fresh Produce' },
+  { value: 'Handmade Crafts', label: 'Handmade Crafts' },
+  { value: 'Dairy Products', label: 'Dairy Products' },
+  { value: 'Honey & Preserves', label: 'Honey & Preserves' },
+];
+
 export function ProductListingPage({
   onNavigate,
   onAddToCart,
@@ -53,7 +90,12 @@ export function ProductListingPage({
     if (initialCategory && initialCategory.startsWith('search:')) {
       return 'all';
     }
-    return initialCategory || 'all';
+    // We expect HomePage to send "Fresh Produce", "Honey & Preserves", etc.
+    // If something unexpected comes, just default to "all".
+    const valid = CATEGORY_FILTER_OPTIONS.some(
+      (opt) => opt.value === initialCategory
+    );
+    return valid ? initialCategory : 'all';
   });
 
   const [sortBy, setSortBy] = useState<string>('default');
@@ -66,9 +108,13 @@ export function ProductListingPage({
     if (initialCategory && initialCategory.startsWith('search:')) {
       setSearchQuery(initialCategory.slice('search:'.length));
       setSelectedCategory('all');
+    } else if (initialCategory) {
+      const valid = CATEGORY_FILTER_OPTIONS.some(
+        (opt) => opt.value === initialCategory
+      );
+      setSelectedCategory(valid ? initialCategory : 'all');
     } else {
-      setSelectedCategory(initialCategory || 'all');
-      // don't override searchQuery here, only category
+      setSelectedCategory('all');
     }
   }, [initialCategory]);
 
@@ -99,6 +145,10 @@ export function ProductListingPage({
     loadProducts();
   }, []);
 
+  // Helper: get canonical label for a product's category
+  const getCategoryLabel = (raw: string) =>
+    CATEGORY_LABELS[raw] ?? raw ?? '';
+
   // ---------------------------
   // Filtering + sorting logic
   // ---------------------------
@@ -106,9 +156,11 @@ export function ProductListingPage({
     .filter((p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
     )
-    .filter((p) =>
-      selectedCategory === 'all' ? true : p.category === selectedCategory
-    )
+    .filter((p) => {
+      if (selectedCategory === 'all') return true;
+      const label = getCategoryLabel(p.category);
+      return label === selectedCategory;
+    })
     .sort((a, b) => {
       if (sortBy === 'price-asc') return a.price - b.price;
       if (sortBy === 'price-desc') return b.price - a.price;
@@ -116,10 +168,8 @@ export function ProductListingPage({
       return 0; // default (no sort)
     });
 
-  // Collect categories dynamically from products
-  const categories = Array.from(
-    new Set(products.map((p) => p.category))
-  ).filter(Boolean);
+  // ❌ REMOVED: collecting categories dynamically from products
+  // We now rely only on CATEGORY_FILTER_OPTIONS so no "honey", "fresh-produce" etc.
 
   // ---------------------------
   // Render
@@ -152,10 +202,9 @@ export function ProductListingPage({
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
+              {CATEGORY_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -214,7 +263,6 @@ export function ProductListingPage({
               <ProductCard
                 product={product}
                 onClick={() => onNavigate('product-details', product.id)}
-                // FIX: Pass the product to onAddToCart, not just call it
                 onAddToCart={canAddToCart ? () => onAddToCart(product) : undefined}
                 isLoggedIn={!!currentUser}
                 onNavigate={onNavigate}

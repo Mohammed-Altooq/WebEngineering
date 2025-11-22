@@ -25,11 +25,18 @@ interface CategoryInfo {
   color: string;
 }
 
+// 🔒 Fixed list of categories shown on the homepage
+const CORE_CATEGORIES: CategoryInfo[] = [
+  { name: 'Fresh Produce', icon: Leaf,    color: 'bg-olive-green' },
+  { name: 'Handmade Crafts', icon: Package, color: 'bg-deep-terracotta' },
+  { name: 'Dairy Products', icon: Package,  color: 'bg-primary' },
+  { name: 'Honey & Preserves', icon: Award, color: 'bg-golden-harvest' },
+];
+
 export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps) {
   const [topRated, setTopRated] = useState<any[]>([]);
   const [sellerCount, setSellerCount] = useState<number | null>(null);
-  const [categories, setCategories] = useState<CategoryInfo[]>([]);
-  const [searchTerm, setSearchTerm] = useState(''); // 👈 NEW: search state
+  const [searchTerm, setSearchTerm] = useState(''); // search state
 
   // ONLY show cart functionality for customers, not sellers
   const canAddToCart = currentUser && currentUser.role === 'customer';
@@ -54,67 +61,8 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
     loadSellers();
   }, []);
 
-  // --- Load products and derive categories dynamically from DB ---
-  useEffect(() => {
-    async function loadCategories() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/products`);
-        if (!res.ok) {
-          console.error('Failed to fetch products for categories', res.status);
-          return;
-        }
-        const data: { category?: string }[] = await res.json();
-
-        const uniqueNames = Array.from(
-          new Set(
-            data
-              .map((p) => p.category)
-              .filter((c): c is string => Boolean(c && c.trim()))
-          )
-        );
-
-        // Map known category names to icons/colors, default for unknown ones
-        const iconMap: Record<
-          string,
-          {
-            icon: CategoryIcon;
-            color: string;
-          }
-        > = {
-          'Fresh Produce': { icon: Leaf, color: 'bg-olive-green' },
-          Vegetables: { icon: Leaf, color: 'bg-olive-green' },
-
-          'Handmade Crafts': { icon: Package, color: 'bg-deep-terracotta' },
-
-          'Dairy Products': { icon: Package, color: 'bg-primary' },
-          'Dairy & Eggs': { icon: Package, color: 'bg-primary' },
-
-          'Honey & Preserves': { icon: Award, color: 'bg-golden-harvest' },
-          Honey: { icon: Award, color: 'bg-golden-harvest' },
-
-          'Home & Kitchen': { icon: Award, color: 'bg-golden-harvest' },
-        };
-
-        const mapped: CategoryInfo[] = uniqueNames.map((name) => {
-          const match = iconMap[name] ?? {
-            icon: Package,
-            color: 'bg-primary',
-          };
-          return {
-            name,
-            icon: match.icon,
-            color: match.color,
-          };
-        });
-
-        setCategories(mapped);
-      } catch (err) {
-        console.error('Error loading categories from products:', err);
-      }
-    }
-
-    loadCategories();
-  }, []);
+  // ❌ REMOVED: loading categories from /api/products
+  // Homepage now always shows CORE_CATEGORIES only.
 
   // --- Load top 3 highest-rated products from DB ---
   useEffect(() => {
@@ -138,14 +86,13 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
 
   const featuredProducts = topRated.length > 0 ? topRated : products.slice(0, 3);
 
-  // 👇 NEW: central search handler
+  // central search handler
   const handleSearch = () => {
     const q = searchTerm.trim();
     if (!q) {
       onNavigate('products'); // if empty, just go to products
       return;
     }
-    // if your App/ProductListing support it, this will pass the query
     onNavigate('products', `search:${q}`);
   };
 
@@ -226,17 +173,17 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
                   <Input
                     placeholder="Search for products..."
                     className="pl-10 h-12 bg-white border-border transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    value={searchTerm}                             // 👈 NEW
-                    onChange={(e) => setSearchTerm(e.target.value)} // 👈 NEW
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSearch();        // 👈 press Enter to search
+                      if (e.key === 'Enter') handleSearch();
                     }}
                   />
                 </div>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
                     className="h-12 px-6 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
-                    onClick={handleSearch} // 👈 was onNavigate('products')
+                    onClick={handleSearch}
                   >
                     Search
                   </Button>
@@ -348,15 +295,7 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
           </motion.div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {(categories.length > 0
-              ? categories
-              : [
-                  { name: 'Fresh Produce', icon: Leaf, color: 'bg-olive-green' },
-                  { name: 'Handmade Crafts', icon: Package, color: 'bg-deep-terracotta' },
-                  { name: 'Dairy Products', icon: Package, color: 'bg-primary' },
-                  { name: 'Honey & Preserves', icon: Award, color: 'bg-golden-harvest' },
-                ]
-            ).map((category, index) => {
+            {CORE_CATEGORIES.map((category, index) => {
               const Icon = category.icon;
               return (
                 <motion.div
