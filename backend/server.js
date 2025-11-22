@@ -785,6 +785,7 @@ app.patch("/api/orders/:orderId/items/:productId/status", auth, requireRole("sel
 
 
 // FIXED: Create a new order + update products/sellers + clear cart
+// FIXED: Create a new order + update products/sellers + clear cart
 app.post("/api/users/:userId/orders", auth, async (req, res) => {
   const { userId } = req.params;
 
@@ -796,8 +797,6 @@ app.post("/api/users/:userId/orders", auth, async (req, res) => {
   try {
     const newId = generateId("o");
     const { 
-      items = [], 
-      total, 
       status, 
       date, 
       shippingAddress, 
@@ -805,40 +804,56 @@ app.post("/api/users/:userId/orders", auth, async (req, res) => {
       paymentMethod  // Added this field
     } = req.body;
 
-    if (!items.length) {
-      return res.status(400).json({ error: "Order must contain at least one item" });
+    // 🔹 1) LOAD CART FROM DB – this is the source of truth for quantities
+    const cart = await Cart.findOne({ userId }).lean();
+    if (!cart || !cart.items || cart.items.length === 0) {
+      return res.status(400).json({ error: "Cart is empty, cannot create order" });
     }
 
-    // 1) ENRICH ITEMS WITH SELLER INFO AND INDIVIDUAL STATUS
+    // 🔹 2) ENRICH ITEMS USING CART DATA (correct quantities)
     const enrichedItems = [];
-    for (const item of items) {
-      const product = await Product.findOne({ id: item.productId });
-      if (product) {
-        enrichedItems.push({
-          productId: item.productId,
-          productName: item.productName || product.name,
-          quantity: item.quantity,
-          price: item.price,
-          sellerId: product.sellerId, // Add seller ID to each item
-          itemStatus: 'Pending' // Individual item status starts as Pending
-        });
-      }
+    let totalFromCart = 0;
+
+    for (const cartItem of cart.items) {
+      const product = await Product.findOne({ id: cartItem.productId });
+      if (!product) continue;
+
+      const qty = Number(cartItem.quantity || 0);
+      const price = Number(cartItem.price || product.price || 0);
+      const lineTotal = qty * price;
+      totalFromCart += lineTotal;
+
+      enrichedItems.push({
+        productId: cartItem.productId,
+        productName: cartItem.name || product.name,
+        quantity: qty,
+        price: price,
+        sellerId: product.sellerId,
+        itemStatus: 'Pending'
+      });
     }
 
-    // 2) CREATE ORDER WITH ENRICHED ITEMS
+    if (!enrichedItems.length) {
+      return res.status(400).json({ error: "No valid items in cart" });
+    }
+
+    // If frontend sent total, nice, but we trust our own calculation
+    const finalTotal = typeof req.body.total === "number" ? req.body.total : totalFromCart;
+
+    // 🔹 3) CREATE ORDER WITH ENRICHED ITEMS
     const order = await Order.create({
       id: newId,
       customerId: userId,
       customerName: customerName || "Unknown",
-      items: enrichedItems, // Use enriched items with seller info
-      total,
+      items: enrichedItems,
+      total: finalTotal,
       status: status || "Pending",
       date: date || new Date().toISOString(),
       shippingAddress: shippingAddress || "",
       paymentMethod: paymentMethod || "Cash on Delivery"
     });
 
-    // 3) UPDATE PRODUCT STOCK + COLLECT SELLER REVENUE
+    // 🔹 4) UPDATE PRODUCT STOCK + COLLECT SELLER REVENUE (using correct qty)
     const sellerRevenue = {}; // { sellerId: totalRevenue }
 
     for (const item of enrichedItems) {
@@ -848,20 +863,24 @@ app.post("/api/users/:userId/orders", auth, async (req, res) => {
       const product = await Product.findOne({ id: productId });
       if (!product) continue;
 
-      // Update stock
       const currentStock = typeof product.stock === "number" ? product.stock : 0;
-      const newStock = Math.max(0, currentStock - quantity);
+      const qty = Number(quantity) || 0;
+      const newStock = Math.max(0, currentStock - qty);
+
+      console.log(
+        `Updating stock for product ${productId}: current=${currentStock}, qty=${qty}, new=${newStock}`
+      );
+
       product.stock = newStock;
       await product.save();
 
-      // Accumulate revenue per seller
       if (sellerId) {
-        const revenue = (price || 0) * quantity;
+        const revenue = (price || 0) * qty;
         sellerRevenue[sellerId] = (sellerRevenue[sellerId] || 0) + revenue;
       }
     }
 
-    // 4) UPDATE SELLERS' totalSales
+    // 🔹 5) UPDATE SELLERS' totalSales
     const sellerIds = Object.keys(sellerRevenue);
     for (const sellerId of sellerIds) {
       const seller = await Seller.findOne({ id: sellerId });
@@ -872,7 +891,7 @@ app.post("/api/users/:userId/orders", auth, async (req, res) => {
       await seller.save();
     }
 
-    // 5) CLEAR USER'S CART
+    // 🔹 6) CLEAR USER'S CART
     await Cart.findOneAndDelete({ userId });
 
     res.status(201).json(order);
@@ -881,6 +900,7 @@ app.post("/api/users/:userId/orders", auth, async (req, res) => {
     res.status(500).json({ error: "Failed to create order" });
   }
 });
+
 
 
 // ----- CART (NEW IMPROVED SCHEMA) -----
