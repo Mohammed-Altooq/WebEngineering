@@ -21,7 +21,6 @@ interface CheckoutPageProps {
     email: string;
     phone?: string; 
   } | null;
-  // 🔴 NEW: let parent clear cart state
   onCartCleared?: () => void;
 }
 
@@ -36,16 +35,23 @@ export function CheckoutPage({
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cod'>('card');
   const [isPlacing, setIsPlacing] = useState(false);
 
-  // ---------- AUTOFILL LOGIC ----------
+  // Form fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNum, setPhoneNum] = useState('');
+  const [phoneError, setPhoneError] = useState('');
 
   // Address fields
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('Manama');
   const [postalCode, setPostalCode] = useState('');
+
+  // Credit card fields
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [cardName, setCardName] = useState('');
 
   useEffect(() => {
     if (currentUser) {
@@ -54,15 +60,61 @@ export function CheckoutPage({
       setLastName(nameParts.slice(1).join(' ') || '');
       setEmail(currentUser.email || '');
       setPhoneNum(currentUser.phone || '');
+      setCardName(currentUser.name || '');
     }
   }, [currentUser]);
 
-  // ---------- PRICES ----------
+  // Phone number validation
+  const validatePhoneNumber = (phone: string) => {
+    // Bahrain phone number format: +973 XXXX XXXX or 8 digits
+    const bahrainPhoneRegex = /^(\+973\s?)?[0-9]{8}$/;
+    return bahrainPhoneRegex.test(phone.replace(/\s/g, ''));
+  };
+
+  const handlePhoneChange = (value: string) => {
+    setPhoneNum(value);
+    if (value && !validatePhoneNumber(value)) {
+      setPhoneError('Please enter a valid Bahrain phone number (8 digits or +973 XXXXXXXX)');
+    } else {
+      setPhoneError('');
+    }
+  };
+
+  // Credit card number formatting
+  const formatCardNumber = (value: string) => {
+    return value.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim();
+  };
+
+  const handleCardNumberChange = (value: string) => {
+    const formatted = formatCardNumber(value.replace(/[^0-9]/g, ''));
+    if (formatted.length <= 19) { // 16 digits + 3 spaces
+      setCardNumber(formatted);
+    }
+  };
+
+  // Expiry date formatting (MM/YY)
+  const handleExpiryChange = (value: string) => {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    if (cleaned.length >= 2) {
+      const formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}`;
+      setExpiryDate(formatted);
+    } else {
+      setExpiryDate(cleaned);
+    }
+  };
+
+  // CVV validation
+  const handleCvvChange = (value: string) => {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    if (cleaned.length <= 4) {
+      setCvv(cleaned);
+    }
+  };
+
   const shipping = 3.5;
   const subtotal = cartTotal;
   const totalWithShipping = subtotal + shipping;
 
-  // ---------- PLACE ORDER ----------
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -75,6 +127,27 @@ export function CheckoutPage({
     if (!cartItems || cartItems.length === 0) {
       toast.error('Your cart is empty');
       return;
+    }
+
+    // Validation
+    if (phoneError) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+
+    if (paymentMethod === 'card') {
+      if (!cardNumber || !expiryDate || !cvv || !cardName) {
+        toast.error('Please fill in all card details');
+        return;
+      }
+      if (cardNumber.replace(/\s/g, '').length !== 16) {
+        toast.error('Please enter a valid 16-digit card number');
+        return;
+      }
+      if (cvv.length < 3) {
+        toast.error('Please enter a valid CVV');
+        return;
+      }
     }
 
     try {
@@ -95,6 +168,7 @@ export function CheckoutPage({
         status: 'Pending',
         date: new Date().toISOString(),
         shippingAddress,
+        paymentMethod: paymentMethod === 'card' ? 'Credit Card' : 'Cash on Delivery',
       };
 
       const orderRes = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/orders`, {
@@ -199,7 +273,7 @@ export function CheckoutPage({
     }
   };
 
-  // ---------- SUCCESS VIEW ----------
+  // Success view
   if (isOrderPlaced) {
     return (
       <div className="min-h-screen bg-soft-cream py-12 px-4 flex items-center justify-center">
@@ -225,7 +299,6 @@ export function CheckoutPage({
     );
   }
 
-  // ---------- MAIN FORM ----------
   return (
     <div className="min-h-screen bg-soft-cream py-8 px-4">
       <div className="max-w-7xl mx-auto">
@@ -272,9 +345,14 @@ export function CheckoutPage({
                   <Input
                     type="tel"
                     value={phoneNum}
-                    onChange={(e) => setPhoneNum(e.target.value)}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    placeholder="+973 XXXX XXXX or 8 digits"
                     required
+                    className={phoneError ? 'border-red-500' : ''}
                   />
+                  {phoneError && (
+                    <p className="text-sm text-red-600">{phoneError}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2 mt-4">
@@ -333,6 +411,58 @@ export function CheckoutPage({
                     </Label>
                   </div>
                 </RadioGroup>
+
+                {/* Credit Card Form */}
+                {paymentMethod === 'card' && (
+                  <div className="mt-6 p-4 border border-border rounded-lg bg-gray-50">
+                    <h3 className="font-['Lato'] text-lg mb-4">Card Details</h3>
+                    
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Cardholder Name</Label>
+                        <Input
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value)}
+                          placeholder="Full name on card"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Card Number</Label>
+                        <Input
+                          value={cardNumber}
+                          onChange={(e) => handleCardNumberChange(e.target.value)}
+                          placeholder="1234 5678 9012 3456"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Expiry Date</Label>
+                          <Input
+                            value={expiryDate}
+                            onChange={(e) => handleExpiryChange(e.target.value)}
+                            placeholder="MM/YY"
+                            maxLength={5}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>CVV</Label>
+                          <Input
+                            value={cvv}
+                            onChange={(e) => handleCvvChange(e.target.value)}
+                            placeholder="123"
+                            maxLength={4}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </Card>
             </div>
 
@@ -349,7 +479,7 @@ export function CheckoutPage({
                         <p className="text-muted-foreground">Qty: {item.quantity}</p>
                       </div>
                       <p className="font-['Roboto_Mono']">
-                        ${(item.price * item.quantity).toFixed(2)}
+                        BD {(item.price * item.quantity).toFixed(3)}
                       </p>
                     </div>
                   ))}
@@ -360,14 +490,14 @@ export function CheckoutPage({
                 <div className="flex justify-between mb-2 text-sm text-foreground/80">
                   <span>Subtotal</span>
                   <span className="font-['Roboto_Mono']">
-                    ${subtotal.toFixed(2)}
+                    BD {subtotal.toFixed(3)}
                   </span>
                 </div>
 
                 <div className="flex justify-between mb-4 text-sm text-foreground/80">
                   <span>Shipping</span>
                   <span className="font-['Roboto_Mono']">
-                    ${shipping.toFixed(2)}
+                    BD {shipping.toFixed(3)}
                   </span>
                 </div>
 
@@ -376,7 +506,7 @@ export function CheckoutPage({
                 <div className="flex justify-between mb-6 items-center">
                   <span className="font-['Lato'] text-base">Total</span>
                   <span className="font-['Poppins'] text-2xl text-primary">
-                    ${totalWithShipping.toFixed(2)}
+                    BD {totalWithShipping.toFixed(3)}
                   </span>
                 </div>
 

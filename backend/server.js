@@ -98,7 +98,7 @@ const reviewSchema = new mongoose.Schema(
 );
 const Review = mongoose.model("Review", reviewSchema);
 
-// Orders
+// Orders - FIXED: Added _id: false to prevent _id in items array
 const orderSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
@@ -109,13 +109,17 @@ const orderSchema = new mongoose.Schema(
         productId: String,
         productName: String,
         quantity: Number,
-        price: Number
+        price: Number,
+        sellerId: String, // Added to track which seller this item belongs to
+        itemStatus: { type: String, default: 'Pending' }, // Individual item status
+        _id: false  // This prevents Mongoose from adding _id to each item
       }
     ],
     total: Number,
     status: String,
     date: String,
-    shippingAddress: String
+    shippingAddress: String,
+    paymentMethod: String  // Added this field
   },
   { collection: "orders" }
 );
@@ -447,7 +451,6 @@ app.get("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
-
 // Create OR update a review for a product (one review per user)
 // and keep Product.rating as the average of unique (latest) reviews
 app.post("/api/products/:id/reviews", async (req, res) => {
@@ -523,9 +526,6 @@ app.post("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
-
-
-
 // ----- ORDERS -----
 
 // Get all orders for a user
@@ -539,35 +539,223 @@ app.get("/api/orders/user/:userId", async (req, res) => {
   }
 });
 
-// Create a new order + update products/sellers + clear cart
+// Get orders for a seller (orders containing their products)
+app.get("/api/sellers/:sellerId/orders", async (req, res) => {
+  try {
+    const { sellerId } = req.params;
+    
+    console.log('📦 Fetching orders for seller:', sellerId);
+    
+    // First get all products by this seller
+    const sellerProducts = await Product.find({ sellerId }).lean();
+    const sellerProductIds = sellerProducts.map(p => p.id);
+    
+    console.log('🛍️ Seller products:', sellerProductIds);
+    
+    if (sellerProductIds.length === 0) {
+      console.log('❌ No products found for seller');
+      return res.json([]); // No products, no orders
+    }
+    
+    // Find all orders that contain products from this seller
+    const orders = await Order.find({
+      "items.productId": { $in: sellerProductIds }
+    }).lean();
+    
+    console.log(`📋 Found ${orders.length} orders containing seller's products`);
+    
+    // Return the COMPLETE orders with ALL item details including itemStatus and sellerId
+    const sellerOrders = orders.map(order => {
+      console.log(`📦 Processing order ${order.id} with items:`, order.items.map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        itemStatus: item.itemStatus,
+        sellerId: item.sellerId
+      })));
+      
+      // Return the complete order - don't filter items, show all items but highlight seller's items
+      const orderWithSellerInfo = {
+        ...order,
+        // Keep ALL items so seller can see the complete order context
+        items: order.items.map(item => ({
+          ...item,
+          isSellerItem: sellerProductIds.includes(item.productId) // Flag seller's items
+        })),
+        // Calculate seller's portion of the order total
+        sellerTotal: order.items
+          .filter(item => sellerProductIds.includes(item.productId))
+          .reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      };
+      
+      console.log(`✅ Processed order ${order.id} for seller view`);
+      return orderWithSellerInfo;
+    });
+    
+    console.log('✅ Returning seller orders:', sellerOrders.length);
+    res.json(sellerOrders);
+  } catch (err) {
+    console.error("Error fetching seller orders:", err);
+    res.status(500).json({ error: "Failed to fetch seller orders" });
+  }
+});
+
+// Update order status (for sellers)
+app.patch("/api/orders/:orderId/status", async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+    
+    const validStatuses = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+    
+    const updatedOrder = await Order.findOneAndUpdate(
+      { id: orderId },
+      { status },
+      { new: true }
+    ).lean();
+    
+    if (!updatedOrder) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    
+    res.json(updatedOrder);
+  } catch (err) {
+    console.error("Error updating order status:", err);
+    res.status(500).json({ error: "Failed to update order status" });
+  }
+});
+
+// Update individual item status within an order (for sellers)
+app.patch("/api/orders/:orderId/items/:productId/status", async (req, res) => {
+  try {
+    const { orderId, productId } = req.params;
+    const { itemStatus, sellerId } = req.body;
+    
+    console.log('=== UPDATING ITEM STATUS ===');
+    console.log('Order ID:', orderId);
+    console.log('Product ID:', productId);
+    console.log('New Status:', itemStatus);
+    console.log('Seller ID:', sellerId);
+    
+    const validItemStatuses = ['Pending', 'Confirmed', 'Being Prepared', 'Ready to Ship', 'Shipped', 'Delivered', 'Cancelled'];
+    if (!validItemStatuses.includes(itemStatus)) {
+      return res.status(400).json({ error: "Invalid item status" });
+    }
+    
+    // Find the order and update the specific item
+    const order = await Order.findOne({ id: orderId });
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    
+    console.log('Found order with items:', order.items.map(item => ({ 
+      productId: item.productId, 
+      sellerId: item.sellerId, 
+      currentStatus: item.itemStatus 
+    })));
+    
+    // Find the item in the order that belongs to this seller
+    const itemIndex = order.items.findIndex(item => 
+      item.productId === productId && item.sellerId === sellerId
+    );
+    
+    if (itemIndex === -1) {
+      console.log('Item not found. Available items:', order.items);
+      return res.status(404).json({ error: "Item not found in order or not owned by seller" });
+    }
+    
+    console.log('Found item at index:', itemIndex, 'Current status:', order.items[itemIndex].itemStatus);
+    
+    // Update the item status
+    order.items[itemIndex].itemStatus = itemStatus;
+    console.log('Updated item status to:', itemStatus);
+    
+    // Auto-update overall order status based on item statuses
+    const itemStatuses = order.items.map(item => item.itemStatus);
+    console.log('All item statuses after update:', itemStatuses);
+    
+    // Only update overall order status when ALL items reach certain milestones
+    if (itemStatuses.every(status => status === 'Delivered')) {
+      order.status = 'Delivered';
+      console.log('All items delivered, updating order status to Delivered');
+    } else if (itemStatuses.every(status => ['Shipped', 'Delivered'].includes(status))) {
+      order.status = 'Shipped';
+      console.log('All items shipped/delivered, updating order status to Shipped');
+    } else if (itemStatuses.every(status => ['Confirmed', 'Being Prepared', 'Ready to Ship', 'Shipped', 'Delivered'].includes(status))) {
+      order.status = 'Confirmed';
+      console.log('All items confirmed or beyond, updating order status to Confirmed');
+    } else if (itemStatuses.some(status => status === 'Cancelled') && itemStatuses.every(status => ['Cancelled', 'Pending'].includes(status))) {
+      order.status = 'Cancelled';
+      console.log('Items cancelled/pending, updating order status to Cancelled');
+    }
+    // If items have mixed statuses, keep the order status as is (usually 'Pending' or 'Confirmed')
+    
+    await order.save();
+    console.log('Order saved with new status:', order.status);
+    
+    res.json(order);
+  } catch (err) {
+    console.error("Error updating item status:", err);
+    res.status(500).json({ error: "Failed to update item status" });
+  }
+});
+
+// FIXED: Create a new order + update products/sellers + clear cart
 app.post("/api/users/:userId/orders", async (req, res) => {
   const { userId } = req.params;
 
   try {
     const newId = generateId("o");
-    const { items = [], total, status, date, shippingAddress, customerName } = req.body;
+    const { 
+      items = [], 
+      total, 
+      status, 
+      date, 
+      shippingAddress, 
+      customerName,
+      paymentMethod  // Added this field
+    } = req.body;
 
     if (!items.length) {
       return res.status(400).json({ error: "Order must contain at least one item" });
     }
 
-    // 1) CREATE ORDER
+    // 1) ENRICH ITEMS WITH SELLER INFO AND INDIVIDUAL STATUS
+    const enrichedItems = [];
+    for (const item of items) {
+      const product = await Product.findOne({ id: item.productId });
+      if (product) {
+        enrichedItems.push({
+          productId: item.productId,
+          productName: item.productName || product.name,
+          quantity: item.quantity,
+          price: item.price,
+          sellerId: product.sellerId, // Add seller ID to each item
+          itemStatus: 'Pending' // Individual item status starts as Pending
+        });
+      }
+    }
+
+    // 2) CREATE ORDER WITH ENRICHED ITEMS
     const order = await Order.create({
       id: newId,
       customerId: userId,
       customerName: customerName || "Unknown",
-      items,
+      items: enrichedItems, // Use enriched items with seller info
       total,
       status: status || "Pending",
       date: date || new Date().toISOString(),
-      shippingAddress: shippingAddress || ""
+      shippingAddress: shippingAddress || "",
+      paymentMethod: paymentMethod || "Cash on Delivery"
     });
 
-    // 2) UPDATE PRODUCT STOCK + COLLECT SELLER REVENUE
+    // 3) UPDATE PRODUCT STOCK + COLLECT SELLER REVENUE
     const sellerRevenue = {}; // { sellerId: totalRevenue }
 
-    for (const item of items) {
-      const { productId, quantity, price } = item;
+    for (const item of enrichedItems) {
+      const { productId, quantity, price, sellerId } = item;
       if (!productId || !quantity) continue;
 
       const product = await Product.findOne({ id: productId });
@@ -580,13 +768,13 @@ app.post("/api/users/:userId/orders", async (req, res) => {
       await product.save();
 
       // Accumulate revenue per seller
-      if (product.sellerId) {
+      if (sellerId) {
         const revenue = (price || 0) * quantity;
-        sellerRevenue[product.sellerId] = (sellerRevenue[product.sellerId] || 0) + revenue;
+        sellerRevenue[sellerId] = (sellerRevenue[sellerId] || 0) + revenue;
       }
     }
 
-    // 3) UPDATE SELLERS' totalSales
+    // 4) UPDATE SELLERS' totalSales
     const sellerIds = Object.keys(sellerRevenue);
     for (const sellerId of sellerIds) {
       const seller = await Seller.findOne({ id: sellerId });
@@ -597,7 +785,7 @@ app.post("/api/users/:userId/orders", async (req, res) => {
       await seller.save();
     }
 
-    // 4) CLEAR USER'S CART
+    // 5) CLEAR USER'S CART
     await Cart.findOneAndDelete({ userId });
 
     res.status(201).json(order);
@@ -606,7 +794,6 @@ app.post("/api/users/:userId/orders", async (req, res) => {
     res.status(500).json({ error: "Failed to create order" });
   }
 });
-
 
 // ----- CART (NEW IMPROVED SCHEMA) -----
 
@@ -631,7 +818,7 @@ app.get("/api/users/:userId/cart", async (req, res) => {
     console.error("❌ Error in cart GET route:", err);
     res.status(500).json({ error: "Failed to fetch cart" });
   }
-}); // FIXED: Added missing closing brace
+});
 
 // Add item to cart
 app.post("/api/users/:userId/cart", async (req, res) => {

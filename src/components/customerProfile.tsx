@@ -23,10 +23,21 @@ interface Order {
   status: string;
   total: number;
   items: {
-    name: string;
+    productId: string;
+    productName: string;
     quantity: number;
     price: number;
-    seller: string;
+    sellerName?: string;
+    sellerId?: string;
+    itemStatus?: string; // Individual item status
+  }[];
+  customerName: string;
+  shippingAddress?: string;
+  sellerStatuses?: {
+    sellerId: string;
+    sellerName: string;
+    items: any[];
+    sellerOrderStatus: string;
   }[];
 }
 
@@ -43,6 +54,7 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0); // Force refresh when needed
   
   const [profileData, setProfileData] = useState<UserProfile>({
     id: currentUser?.id || '',
@@ -53,6 +65,13 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
   });
   
   const [orders, setOrders] = useState<Order[]>([]);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  // Function to refresh orders
+  const refreshOrders = () => {
+    console.log('🔄 Manual refresh triggered...');
+    setRefreshKey(prev => prev + 1);
+  };
 
   // Load user profile and orders from database
   useEffect(() => {
@@ -67,51 +86,161 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
         setLoading(true);
         setError(null);
         
-        console.log('Loading data for user:', currentUser.id);
+        console.log('🔄 Loading data for user:', currentUser.id);
         console.log('API Base URL:', API_BASE_URL);
 
-        // Fetch user profile
-        const profileUrl = `${API_BASE_URL}/api/users/${currentUser.id}`;
-        console.log('Fetching profile from:', profileUrl);
-        
-        const profileRes = await fetch(profileUrl);
-        console.log('Profile response status:', profileRes.status);
-        
-        if (profileRes.ok) {
-          const profile = await profileRes.json();
-          console.log('Profile data received:', profile);
+        // Fetch user profile (only on initial load, not on refresh)
+        if (refreshKey === 0) {
+          const profileUrl = `${API_BASE_URL}/api/users/${currentUser.id}`;
+          console.log('Fetching profile from:', profileUrl);
           
-          setProfileData({
-            id: profile.id,
-            name: profile.name,
-            email: profile.email,
-            phone: profile.phone || '',
-            joinDate: profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US', { 
-              month: 'long', 
-              year: 'numeric' 
-            }) : 'Recently'
-          });
-        } else {
-          console.log('Profile fetch failed, using current user data');
-          // Use current user data as fallback
-          setProfileData(prev => ({
-            ...prev,
-            name: currentUser.name,
-            email: currentUser.email
-          }));
+          const profileRes = await fetch(profileUrl);
+          console.log('Profile response status:', profileRes.status);
+          
+          if (profileRes.ok) {
+            const profile = await profileRes.json();
+            console.log('Profile data received:', profile);
+            
+            setProfileData({
+              id: profile.id,
+              name: profile.name,
+              email: profile.email,
+              phone: profile.phone || '',
+              joinDate: profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US', { 
+                month: 'long', 
+                year: 'numeric' 
+              }) : 'Recently'
+            });
+          } else {
+            console.log('Profile fetch failed, using current user data');
+            // Use current user data as fallback
+            setProfileData(prev => ({
+              ...prev,
+              name: currentUser.name,
+              email: currentUser.email
+            }));
+          }
         }
 
-        // Fetch user orders
-        const ordersUrl = `${API_BASE_URL}/api/orders/user/${currentUser.id}`;
-        console.log('Fetching orders from:', ordersUrl);
+        // Always fetch fresh orders (including on refresh)
+        const ordersUrl = `${API_BASE_URL}/api/orders/user/${currentUser.id}?timestamp=${Date.now()}`;
+        console.log('🔄 Fetching fresh orders from:', ordersUrl);
         
-        const ordersRes = await fetch(ordersUrl);
+        const ordersRes = await fetch(ordersUrl, {
+          cache: 'no-cache', // Force fresh data
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
         console.log('Orders response status:', ordersRes.status);
         
         if (ordersRes.ok) {
           const ordersData = await ordersRes.json();
-          console.log('Orders data received:', ordersData);
-          setOrders(Array.isArray(ordersData) ? ordersData : []);
+          console.log('📦 Raw orders data received:', ordersData);
+          
+          // Process orders to add seller names - item statuses come directly from DB
+          const processedOrders = await Promise.all(
+            ordersData.map(async (order: any) => {
+              console.log(`🔄 Processing order ${order.id} with status: ${order.status}`);
+              console.log(`Items in order:`, order.items.map((item: any) => ({
+                product: item.productName,
+                status: item.itemStatus
+              })));
+              
+              const processedItems = await Promise.all(
+                order.items.map(async (item: any) => {
+                  console.log(`📦 Processing item ${item.productName} with status: ${item.itemStatus}`);
+                  
+                  let sellerName = 'Unknown Seller';
+                  let sellerId = null;
+                  
+                  try {
+                    // Fetch product details to get seller info
+                    const productRes = await fetch(`${API_BASE_URL}/api/products/${item.productId}`);
+                    if (productRes.ok) {
+                      const product = await productRes.json();
+                      sellerName = product.sellerName || 'Unknown Seller';
+                      sellerId = product.sellerId;
+                    }
+                  } catch (err) {
+                    console.warn('Failed to fetch seller for product:', item.productId);
+                  }
+                  
+                  const processedItem = {
+                    productId: item.productId,
+                    productName: item.productName,
+                    quantity: item.quantity,
+                    price: item.price,
+                    sellerName: sellerName,
+                    sellerId: sellerId, // Add seller ID
+                    itemStatus: item.itemStatus || 'Pending' // Keep individual item status for reference
+                  };
+                  
+                  console.log('✅ Processed item:', processedItem);
+                  return processedItem;
+                })
+              );
+              
+              // Now fetch seller-specific order statuses
+              const sellerGroups = processedItems.reduce((acc, item) => {
+                if (item.sellerId) {
+                  if (!acc[item.sellerId]) {
+                    acc[item.sellerId] = {
+                      sellerId: item.sellerId,
+                      sellerName: item.sellerName,
+                      items: [],
+                      sellerOrderStatus: 'Pending' // Default
+                    };
+                  }
+                  acc[item.sellerId].items.push(item);
+                }
+                return acc;
+              }, {} as Record<string, any>);
+              
+              // Fetch seller-specific order status for each seller
+              for (const sellerId of Object.keys(sellerGroups)) {
+                try {
+                  const sellerOrdersRes = await fetch(`${API_BASE_URL}/api/sellers/${sellerId}/orders`);
+                  if (sellerOrdersRes.ok) {
+                    const sellerOrders = await sellerOrdersRes.json();
+                    // Find this specific order in seller's orders
+                    const sellerOrder = sellerOrders.find((so: any) => so.id === order.id);
+                    if (sellerOrder) {
+                      // Use the seller's view of this order status
+                      sellerGroups[sellerId].sellerOrderStatus = sellerOrder.status;
+                      console.log(`✅ Found seller order status for ${sellerId}: ${sellerOrder.status}`);
+                    } else {
+                      // Fallback 1: Use main order status if seller-specific order not found
+                      console.log(`⚠️ Seller order not found for ${sellerId}, using main order status: ${order.status}`);
+                      sellerGroups[sellerId].sellerOrderStatus = order.status;
+                    }
+                  } else {
+                    // Fallback 2: Use main order status if API call fails
+                    console.log(`⚠️ Failed to fetch seller orders for ${sellerId} (${sellerOrdersRes.status}), using main order status: ${order.status}`);
+                    sellerGroups[sellerId].sellerOrderStatus = order.status;
+                  }
+                } catch (err) {
+                  console.warn('Failed to fetch seller order status for seller:', sellerId, err);
+                  // Fallback 3: Use main order status if there's a network error
+                  sellerGroups[sellerId].sellerOrderStatus = order.status;
+                }
+              }
+              
+              const processedOrder = {
+                ...order,
+                items: processedItems,
+                sellerStatuses: Object.values(sellerGroups) // Add seller-specific statuses
+              };
+              
+              console.log(`✅ Processed order ${order.id} with overall status: ${order.status}`);
+              return processedOrder;
+            })
+          );
+          
+          console.log('✅ Processed orders with seller info and live statuses:', processedOrders);
+          setOrders(processedOrders);
+          setLastRefresh(new Date());
+          console.log('🕐 Orders updated at:', new Date().toLocaleTimeString());
         } else {
           console.log('Orders fetch failed, using empty array');
           setOrders([]);
@@ -132,19 +261,89 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
     }
 
     loadUserData();
+  }, [currentUser?.id, refreshKey]); // Added refreshKey for force refresh
+
+  // Auto-refresh orders every 30 seconds to get latest status updates
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing orders...');
+      setRefreshKey(prev => prev + 1);
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
   }, [currentUser?.id]);
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      delivered: { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
-      shipped: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Shipped' },
-      processing: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Processing' },
-      pending: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
-      cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' }
+      'Delivered': { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
+      'Shipped': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Shipped' },
+      'Confirmed': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Confirmed' },
+      'Processing': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Processing' },
+      'Pending': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
+      'Cancelled': { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' }
     };
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.processing;
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.Pending;
     return (
       <Badge className={`${config.bg} ${config.text} border-0`}>
+        {config.label}
+      </Badge>
+    );
+  };
+
+  // FIXED: Order status logic that considers seller-specific statuses
+  const getOrderStatusSummary = (order: Order) => {
+    // If we have seller-specific statuses, use them
+    if (order.sellerStatuses && order.sellerStatuses.length > 0) {
+      const sellerStatuses = order.sellerStatuses.map(s => s.sellerOrderStatus);
+      const uniqueSellerStatuses = [...new Set(sellerStatuses)];
+      
+      // If all sellers have the same status
+      if (uniqueSellerStatuses.length === 1) {
+        return uniqueSellerStatuses[0];
+      }
+      
+      // Mixed seller statuses
+      return `Mixed (${uniqueSellerStatuses.join(', ')})`;
+    }
+    
+    // Fallback to order status
+    return order.status;
+  };
+
+  const getDetailedOrderBadge = (order: Order) => {
+    const summary = getOrderStatusSummary(order);
+    const isMixed = summary.includes('Mixed');
+    
+    if (isMixed) {
+      return (
+        <div className="flex gap-2 items-center">
+          {getStatusBadge(order.status)}
+          <Badge className="bg-orange-100 text-orange-800 border-0 text-xs" title={summary}>
+            Mixed Sellers
+          </Badge>
+        </div>
+      );
+    }
+    
+    return getStatusBadge(summary);
+  };
+
+  const getItemStatusBadge = (status: string) => {
+    const statusConfig = {
+      'Delivered': { bg: 'bg-green-50', text: 'text-green-700', label: 'Delivered' },
+      'Shipped': { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Shipped' },
+      'Processing': { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Processing' },
+      'Ready to Ship': { bg: 'bg-indigo-50', text: 'text-indigo-700', label: 'Ready to Ship' },
+      'Being Prepared': { bg: 'bg-purple-50', text: 'text-purple-700', label: 'Being Prepared' },
+      'Confirmed': { bg: 'bg-cyan-50', text: 'text-cyan-700', label: 'Confirmed' },
+      'Pending': { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Pending' },
+      'Cancelled': { bg: 'bg-red-50', text: 'text-red-700', label: 'Cancelled' }
+    };
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.Pending;
+    return (
+      <Badge variant="outline" className={`${config.bg} ${config.text} border-current text-xs`}>
         {config.label}
       </Badge>
     );
@@ -282,7 +481,6 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
           </Card>
         )}
 
-
         {/* Profile Header */}
         <Card className="p-8 bg-white border border-border mb-8">
           <div className="grid md:grid-cols-3 gap-8">
@@ -290,12 +488,13 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
             <div className="md:col-span-2">
               <div className="flex items-start space-x-6 mb-6">
                 <Avatar className="w-24 h-24">
-                  <ImageWithFallback
-                    src=""
-                    alt={profileData.name}
-                    className="w-full h-full object-cover"
-                  />
-                  <AvatarFallback className="text-2xl">{profileData.name[0]}</AvatarFallback>
+                  {profileData.name ? (
+                    <AvatarFallback className="text-2xl bg-primary/10 text-primary">
+                      {profileData.name[0]?.toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  ) : (
+                    <AvatarFallback className="text-2xl">U</AvatarFallback>
+                  )}
                 </Avatar>
                 
                 <div className="flex-1">
@@ -430,6 +629,23 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
                 <h2 className="font-['Poppins'] text-2xl mb-1">Order History</h2>
                 <p className="text-foreground/70">Track your orders and view purchase history</p>
               </div>
+              <div className="text-right">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={refreshOrders}
+                  disabled={loading}
+                  className="mb-2"
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  {loading ? 'Loading...' : 'Refresh Orders'}
+                </Button>
+                {lastRefresh && (
+                  <p className="text-xs text-foreground/60">
+                    Last updated: {lastRefresh.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
             </div>
 
             {orders.length > 0 ? (
@@ -440,7 +656,8 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
                       <div>
                         <div className="flex items-center space-x-3 mb-2">
                           <h3 className="font-['Lato'] text-lg">{order.id}</h3>
-                          {getStatusBadge(order.status)}
+                          {/* Show primary order status */}
+                          {getDetailedOrderBadge(order)}
                         </div>
                         <div className="flex items-center space-x-4 text-sm text-foreground/70">
                           <div className="flex items-center space-x-1">
@@ -456,6 +673,19 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
                             <span>{order.items.length} items</span>
                           </div>
                         </div>
+                        {/* Seller order status summary */}
+                        {order.sellerStatuses && order.sellerStatuses.length > 1 && (
+                          <div className="mt-2">
+                            <p className="text-xs text-foreground/60 mb-1">Order Status by Seller:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {order.sellerStatuses.map((sellerStatus) => (
+                                <span key={sellerStatus.sellerId} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200">
+                                  {sellerStatus.sellerName}: {sellerStatus.items.length} item{sellerStatus.items.length > 1 ? 's' : ''} - {sellerStatus.sellerOrderStatus}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="font-['Poppins'] text-xl text-primary">
@@ -466,16 +696,34 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
 
                     <Separator className="my-4" />
 
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {order.items.map((item, index) => (
-                        <div key={index} className="flex items-center justify-between text-sm">
+                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                           <div className="flex-1">
-                            <p className="font-medium">{item.name}</p>
-                            <p className="text-foreground/70">by {item.seller}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-medium">{item.productName}</p>
+                              {/* Show actual itemStatus from database */}
+                              {(() => {
+                                // Prioritize individual item status from database
+                                if (item.itemStatus) {
+                                  return getItemStatusBadge(item.itemStatus);
+                                }
+                                // Fallback: Try to get seller-specific status
+                                if (order.sellerStatuses) {
+                                  const sellerStatus = order.sellerStatuses.find(s => s.sellerId === item.sellerId);
+                                  if (sellerStatus && sellerStatus.sellerOrderStatus) {
+                                    return getItemStatusBadge(sellerStatus.sellerOrderStatus);
+                                  }
+                                }
+                                // Final fallback: Use main order status
+                                return getItemStatusBadge(order.status);
+                              })()}
+                            </div>
+                            <p className="text-foreground/70 text-sm">by {item.sellerName}</p>
                           </div>
                           <div className="text-right">
-                            <p>Qty: {item.quantity}</p>
-                            <p className="font-medium">BD {item.price.toFixed(3)}</p>
+                            <p className="text-sm">Qty: {item.quantity}</p>
+                            <p className="font-medium">BD {(item.price * item.quantity).toFixed(3)}</p>
                           </div>
                         </div>
                       ))}
@@ -485,7 +733,7 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
                       <Button variant="outline" size="sm">
                         View Details
                       </Button>
-                      {order.status === 'delivered' && (
+                      {order.status === 'Delivered' && (
                         <Button variant="ghost" size="sm">
                           <Star className="w-4 h-4 mr-1" />
                           Write Review

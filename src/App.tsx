@@ -32,10 +32,33 @@ interface User {
   role: UserRole;
 }
 
+interface OrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  sellerId?: string;
+  sellerName?: string;
+  itemStatus?: string;
+}
+
+interface Order {
+  id: string;
+  customerId: string;
+  customerName: string;
+  items: OrderItem[];
+  total: number;
+  status: string;
+  date: string;
+  shippingAddress?: string;
+  paymentMethod?: string;
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [selectedOrderId, setSelectedOrderId] = useState<string | undefined>();
   const [cartItemCount, setCartItemCount] = useState(0);
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -116,36 +139,46 @@ export default function App() {
     setUser(null);
     setCartItemCount(0);
     setCartItems([]);
+    setSelectedOrderId(undefined);
     localStorage.removeItem('user');
     setCurrentPage('home');
   };
 
   const handleNavigate = (page: string, idOrCategory?: string) => {
-  setCurrentPage(page);
+    console.log('🧭 Navigating to:', page, 'with param:', idOrCategory);
+    
+    setCurrentPage(page);
 
-  if (
-    page === 'product-details' ||
-    page === 'seller-profile' ||
-    page === 'reviews'          // 👈 NEW: keep productId when going to reviews page
-  ) {
-    setSelectedProductId(idOrCategory);
-  } else {
-    setSelectedProductId(undefined);
-  }
+    if (
+      page === 'product-details' ||
+      page === 'seller-profile' ||
+      page === 'reviews'
+    ) {
+      setSelectedProductId(idOrCategory);
+      setSelectedOrderId(undefined);
+    } else if (
+      page === 'order-details' ||
+      page === 'track-order'
+    ) {
+      setSelectedOrderId(idOrCategory);
+      setSelectedProductId(undefined);
+    } else {
+      setSelectedProductId(undefined);
+      setSelectedOrderId(undefined);
+    }
 
-  if (page === 'products') {
-    setSelectedCategory(idOrCategory);
-  } else {
-    setSelectedCategory(undefined);
-  }
+    if (page === 'products') {
+      setSelectedCategory(idOrCategory);
+    } else {
+      setSelectedCategory(undefined);
+    }
 
-  const skipScrollToTop = page === 'home' && idOrCategory === 'keepScroll';
+    const skipScrollToTop = page === 'home' && idOrCategory === 'keepScroll';
 
-  if (!skipScrollToTop) {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-};
-
+    if (!skipScrollToTop) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleAddToCart = async (product: Product, quantity: number = 1) => {
     console.log('🛒 === ADD TO CART DEBUG ===');
@@ -240,6 +273,24 @@ export default function App() {
     }
   };
 
+  const refreshOrders = async () => {
+    console.log('🔄 Refreshing orders...');
+    // This will trigger a re-fetch in components that show orders
+    // You could also maintain order state here if needed
+  };
+
+  const handleOrderStatusUpdate = (orderId: string, newStatus: string) => {
+    console.log('📋 Order status updated:', orderId, '→', newStatus);
+    toast.success('Order status updated successfully!');
+    // Could trigger state updates here if maintaining order state
+  };
+
+  const handleItemStatusUpdate = (orderId: string, productId: string, newStatus: string) => {
+    console.log('📦 Item status updated:', orderId, productId, '→', newStatus);
+    toast.success('Item status updated successfully!');
+    // Could trigger state updates here if maintaining order state
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
@@ -319,18 +370,22 @@ export default function App() {
             cartTotal={total}
             onNavigate={handleNavigate}
             currentUser={user}
-             onCartCleared={() => {
-        setCartItems([]);
-        setCartTotal(0);
-        setCartItemCount(0);
-      }}
+            onCartCleared={() => {
+              setCartItems([]);
+              setCartItemCount(0);
+            }}
           />
         );
       }
 
       case 'seller-dashboard':
         return isSeller ? (
-          <SellerDashboard onNavigate={handleNavigate} currentUser={user} />
+          <SellerDashboard 
+            onNavigate={handleNavigate} 
+            currentUser={user}
+            onOrderStatusUpdate={handleOrderStatusUpdate}
+            onItemStatusUpdate={handleItemStatusUpdate}
+          />
         ) : (
           <HomePage 
             onNavigate={handleNavigate} 
@@ -349,21 +404,20 @@ export default function App() {
           />
         );
 
-          case 'reviews':
-      return selectedProductId ? (
-        <ReviewPage
-          productId={selectedProductId}
-          onNavigate={handleNavigate}
-          currentUser={user}
-        />
-      ) : (
-        <HomePage
-          onNavigate={handleNavigate}
-          onAddToCart={handleAddToCart}
-          currentUser={user}
-        />
-      );
-
+      case 'reviews':
+        return selectedProductId ? (
+          <ReviewPage
+            productId={selectedProductId}
+            onNavigate={handleNavigate}
+            currentUser={user}
+          />
+        ) : (
+          <HomePage
+            onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
+            currentUser={user}
+          />
+        );
 
       case 'customer-profile':
         return (
@@ -378,6 +432,95 @@ export default function App() {
           <CustomerProfile
             currentUser={user}
             onNavigate={handleNavigate}
+          />
+        );
+
+      // NEW ORDER MANAGEMENT PAGES
+      case 'order-details':
+        return selectedOrderId ? (
+          <div className="min-h-screen bg-soft-cream py-8 px-4">
+            <div className="max-w-4xl mx-auto">
+              <h1 className="font-['Poppins'] text-3xl mb-6">Order Details</h1>
+              <p className="text-foreground/70 mb-4">Order ID: {selectedOrderId}</p>
+              <p className="text-sm text-foreground/60">
+                Detailed order view component would go here. This would show:
+                <br />• Complete order information
+                <br />• Individual item statuses
+                <br />• Shipping tracking
+                <br />• Communication with sellers
+                <br />• Review options for delivered items
+              </p>
+              <div className="mt-6">
+                <button
+                  onClick={() => handleNavigate('customer-profile')}
+                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90"
+                >
+                  Back to Orders
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <CustomerProfile currentUser={user} onNavigate={handleNavigate} />
+        );
+
+      case 'track-order':
+        return selectedOrderId ? (
+          <div className="min-h-screen bg-soft-cream py-8 px-4">
+            <div className="max-w-4xl mx-auto">
+              <h1 className="font-['Poppins'] text-3xl mb-6">Track Your Order</h1>
+              <p className="text-foreground/70 mb-4">Tracking Order: {selectedOrderId}</p>
+              <p className="text-sm text-foreground/60">
+                Order tracking component would go here. This would show:
+                <br />• Real-time status updates
+                <br />• Timeline of order progress
+                <br />• Expected delivery dates per item
+                <br />• Carrier tracking info
+                <br />• Contact seller options
+              </p>
+              <div className="mt-6">
+                <button
+                  onClick={() => handleNavigate('customer-profile')}
+                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90"
+                >
+                  Back to Orders
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <CustomerProfile currentUser={user} onNavigate={handleNavigate} />
+        );
+
+      case 'seller-order-management':
+        return isSeller ? (
+          <div className="min-h-screen bg-soft-cream py-8 px-4">
+            <div className="max-w-6xl mx-auto">
+              <h1 className="font-['Poppins'] text-3xl mb-6">Order Management</h1>
+              <p className="text-sm text-foreground/60 mb-6">
+                Enhanced seller order management would go here. This would include:
+                <br />• Bulk order processing
+                <br />• Individual item status updates
+                <br />• Inventory alerts
+                <br />• Customer communication
+                <br />• Shipping label generation
+                <br />• Analytics and reports
+              </p>
+              <div>
+                <button
+                  onClick={() => handleNavigate('seller-dashboard')}
+                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <HomePage 
+            onNavigate={handleNavigate} 
+            onAddToCart={handleAddToCart} 
+            currentUser={user} 
           />
         );
 
@@ -419,7 +562,10 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <p>Loading...</p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p>Loading marketplace...</p>
+        </div>
       </div>
     );
   }

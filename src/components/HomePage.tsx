@@ -38,9 +38,17 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
   const [sellerCount, setSellerCount] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState(''); // search state
 
-  // ONLY show cart functionality for customers, not sellers
-  const canAddToCart = currentUser && currentUser.role === 'customer';
+  // FIXED: Better logic for cart functionality
+  const isCustomer = currentUser?.role === 'customer';
   const isSeller = currentUser?.role === 'seller';
+  const isLoggedIn = !!currentUser;
+
+  console.log('=== HOMEPAGE CART DEBUG ===');
+  console.log('Current User:', currentUser);
+  console.log('Is Customer:', isCustomer);
+  console.log('Is Seller:', isSeller);
+  console.log('Is Logged In:', isLoggedIn);
+  console.log('OnAddToCart function exists:', !!onAddToCart);
 
   // --- Load sellers for the "150+ Local Sellers" card ---
   useEffect(() => {
@@ -76,6 +84,7 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
 
         // Take top 3
         setTopRated(sorted.slice(0, 3));
+        console.log('✅ Loaded top rated products:', sorted.slice(0, 3));
       } catch (err) {
         console.error("Error loading top rated products:", err);
       }
@@ -94,6 +103,31 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
       return;
     }
     onNavigate('products', `search:${q}`);
+  };
+
+  // FIXED: Proper cart handler with debugging and error handling
+  const handleAddToCart = (product: any) => {
+    console.log('🛒 HomePage handleAddToCart called with:', product);
+    console.log('User check - isCustomer:', isCustomer, 'currentUser:', currentUser);
+    
+    // Check if product is valid
+    if (!product) {
+      console.error('❌ Product is undefined in HomePage handleAddToCart');
+      return;
+    }
+    
+    if (!product.id) {
+      console.error('❌ Product is missing ID:', product);
+      return;
+    }
+    
+    if (!isCustomer) {
+      console.log('❌ Not a customer, blocking add to cart');
+      return;
+    }
+    
+    console.log('✅ Calling parent onAddToCart function with product:', product);
+    onAddToCart(product);
   };
 
   return (
@@ -364,27 +398,31 @@ export function HomePage({ onNavigate, onAddToCart, currentUser }: HomePageProps
                 width: 100% !important;
               }
             `}</style>
-            {featuredProducts.map((product, index) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.15 }}
-                className="featured-products"
-              >
-                <ProductCard
-                  product={product}
-                  onViewDetails={(id: string) => onNavigate('product-details', id)}
-                  onAddToCart={canAddToCart ? onAddToCart : undefined}
-                  onViewSeller={(sellerId: string) =>
-                    onNavigate('seller-profile', sellerId)
-                  }
-                  isLoggedIn={!!currentUser}
-                  showAddToCart={!isSeller} // HIDE CART FOR SELLERS
-                />
-              </motion.div>
-            ))}
+            {featuredProducts.map((product, index) => {
+              console.log(`🔄 Rendering product ${product.id}:`, product);
+              
+              return (
+                <motion.div
+                  key={product.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.15 }}
+                  className="featured-products"
+                >
+                  <ProductCard
+                    product={product}
+                    onViewDetails={(id: string) => onNavigate('product-details', id)}
+                    onAddToCart={isCustomer ? () => handleAddToCart(product) : undefined}
+                    onViewSeller={(sellerId: string) =>
+                      onNavigate('seller-profile', sellerId)
+                    }
+                    isLoggedIn={isLoggedIn}
+                    showAddToCart={isCustomer} // Only show for customers
+                  />
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>

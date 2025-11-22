@@ -483,25 +483,7 @@ export function SellerProfile({ currentUser, onNavigate, onAddToCart }: SellerPr
 
             {/* Stats - keeping the rest the same */}
             <div className="space-y-4">
-              <Card className="p-6 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm text-foreground/70">Total Sales</p>
-                  <TrendingUp className="w-5 h-5 text-primary" />
-                </div>
-                <p className="font-['Poppins'] text-3xl text-primary mb-1">{sellerStats.totalSales}</p>
-                <p className="text-sm text-foreground/70">Completed Orders</p>
-              </Card>
-
-              <Card className="p-6 bg-gradient-to-br from-golden-harvest/10 to-golden-harvest/5 border-golden-harvest/20">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm text-foreground/70">Revenue</p>
-                  <Package className="w-5 h-5 text-golden-harvest" />
-                </div>
-                <p className="font-['Poppins'] text-3xl text-golden-harvest mb-1">
-                  BD {sellerStats.totalRevenue.toFixed(3)}
-                </p>
-                <p className="text-sm text-foreground/70">This Year</p>
-              </Card>
+              
 
               <Card className="p-6 bg-gradient-to-br from-olive-green/10 to-olive-green/5 border-olive-green/20">
                 <div className="flex items-center justify-between mb-2">
@@ -531,147 +513,22 @@ export function SellerProfile({ currentUser, onNavigate, onAddToCart }: SellerPr
               viewport={{ once: true }}
               transition={{ duration: 0.6 }}
             >
-              <div>
-                <h2 className="font-['Poppins'] text-3xl mb-2">Products by {profileData.name}</h2>
-                <p className="text-foreground/70">
-                  {sellerProducts.length > 0 
-                    ? `Discover ${sellerProducts.length} high-quality products from this seller`
-                    : 'This seller hasn\'t added any products yet'
-                  }
-                </p>
-              </div>
-              {currentUser?.role === 'seller' && (
-                <motion.div whileHover={{ scale: 1.05, x: 5 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    variant="outline"
-                    onClick={() => onNavigate('seller-dashboard')}
-                    className="hover:bg-primary/5 transition-all"
-                  >
-                    Manage Products
-                  </Button>
-                </motion.div>
-              )}
+             
+              
             </motion.div>
 
-            {sellerProducts.length > 0 ? (
-              <div className="grid md:grid-cols-3 gap-6">
-                <style>{`
-                  .seller-products img {
-                    max-height: 200px !important;
-                    height: 200px !important;
-                    object-fit: cover !important;
-                    width: 100% !important;
-                  }
-                `}</style>
-                {sellerProducts.map((product, index) => (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: index * 0.15 }}
-                    className="seller-products"
-                  >
-                    <ProductCard
-                      product={product}
-                      onViewDetails={(id: string) => onNavigate('product-details', id)}
-                      onAddToCart={canAddToCart ? onAddToCart : undefined}
-                      onViewSeller={(sellerId: string) =>
-                        onNavigate('seller-profile', sellerId)
-                      }
-                      isLoggedIn={!!currentUser}
-                      showAddToCart={!isSeller}
-                    />
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-12 text-center bg-white border border-border">
-                <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-['Poppins'] text-xl mb-2">No Products Yet</h3>
-                <p className="text-foreground/70">This seller hasn't added any products to showcase yet.</p>
-                {currentUser?.role === 'seller' && (
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => onNavigate('seller-dashboard')}
-                  >
-                    Add Your First Product
-                  </Button>
-                )}
-              </Card>
-            )}
+            
           </div>
         </section>
 
         {/* Tabs Section */}
-        <Tabs defaultValue="orders" className="space-y-6">
+        <Tabs defaultValue="profile" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="orders">
-              Recent Orders ({sellerOrders.length})
-            </TabsTrigger>
+            
             <TabsTrigger value="profile">
               Profile Settings
             </TabsTrigger>
           </TabsList>
-
-          {/* Recent Orders Tab */}
-          <TabsContent value="orders" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-['Poppins'] text-2xl mb-1">Recent Orders</h2>
-                <p className="text-foreground/70">Track customer orders and manage fulfillment</p>
-              </div>
-              <Button onClick={() => onNavigate('seller-dashboard')}>
-                View Dashboard
-              </Button>
-            </div>
-
-            {sellerOrders.length > 0 ? (
-              <div className="space-y-4">
-                {sellerOrders.map((order) => (
-                  <Card key={order.id} className="p-6 bg-white border border-border">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <div className="flex items-center space-x-3 mb-2">
-                          <h3 className="font-['Lato'] text-lg">{order.id}</h3>
-                          {getStatusBadge(order.status)}
-                        </div>
-                        <p className="text-sm text-foreground/70 mb-1">Customer: {order.customerName}</p>
-                        <p className="text-sm text-foreground/70">
-                          {order.items.map((item: any) => item.productName).join(', ')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-['Poppins'] text-xl text-primary">
-                          BD {order.total.toFixed(3)}
-                        </p>
-                        <p className="text-sm text-foreground/70">
-                          {new Date(order.date).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end space-x-2">
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                      {order.status === 'processing' && (
-                        <Button size="sm">
-                          Update Status
-                        </Button>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-12 text-center bg-white border border-border">
-                <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-['Poppins'] text-xl mb-2">No Recent Orders</h3>
-                <p className="text-foreground/70">New orders will appear here when customers make purchases.</p>
-              </Card>
-            )}
-          </TabsContent>
 
           {/* Profile Settings Tab */}
           <TabsContent value="profile" className="space-y-6">
