@@ -21,6 +21,7 @@ import { AboutPage } from './components/AboutPage';
 import { FaqPage } from './components/FaqPage';
 import { authFetch } from './lib/api';
 import { SellerOrdersPage } from './components/SellerOrdersPage';
+import { OrderDetailsPage } from './components/OrderDetailsPage';
 
 // Using Vite proxy - requests will be forwarded to Express server
 const API_BASE_URL = '';
@@ -416,32 +417,16 @@ export default function App() {
         return <CustomerProfile currentUser={user} onNavigate={handleNavigate} />;
 
       case 'order-details':
-        return selectedOrderId ? (
-          <div className="min-h-screen bg-soft-cream py-8 px-4">
-            <div className="max-w-4xl mx-auto">
-              <h1 className="font-['Poppins'] text-3xl mb-6">Order Details</h1>
-              <p className="text-foreground/70 mb-4">Order ID: {selectedOrderId}</p>
-              <p className="text-sm text-foreground/60">
-                Detailed order view component would go here. This would show:
-                <br />• Complete order information
-                <br />• Individual item statuses
-                <br />• Shipping tracking
-                <br />• Communication with sellers
-                <br />• Review options for delivered items
-              </p>
-              <div className="mt-6">
-                <button
-                  onClick={() => handleNavigate('customer-profile')}
-                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90"
-                >
-                  Back to Orders
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <CustomerProfile currentUser={user} onNavigate={handleNavigate} />
-        );
+  return selectedOrderId ? (
+    <OrderDetailsPage
+      orderId={selectedOrderId}
+      currentUser={user}
+      onNavigate={handleNavigate}
+    />
+  ) : (
+    <CustomerProfile currentUser={user} onNavigate={handleNavigate} />
+  );
+
 
       case 'track-order':
         return selectedOrderId ? (

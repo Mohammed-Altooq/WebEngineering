@@ -14,8 +14,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 
 interface CustomerProfileProps {
   currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, idOrParam?: string) => void;
 }
+
 
 interface Order {
   id: string;
@@ -730,16 +731,21 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
                     </div>
 
                     <div className="flex justify-between items-center mt-4">
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                      {order.status === 'Delivered' && (
-                        <Button variant="ghost" size="sm">
-                          <Star className="w-4 h-4 mr-1" />
-                          Write Review
-                        </Button>
-                      )}
-                    </div>
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={() => onNavigate('order-details', order.id)}
+  >
+    View Details
+  </Button>
+  {order.status === 'Delivered' && (
+    <Button variant="ghost" size="sm">
+      <Star className="w-4 h-4 mr-1" />
+      Write Review
+    </Button>
+  )}
+</div>
+
                   </Card>
                 ))}
               </div>
