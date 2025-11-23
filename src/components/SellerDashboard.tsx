@@ -1,5 +1,5 @@
 import { useState, useEffect, ChangeEvent } from 'react';
-import { Plus, Package, TrendingUp, DollarSign, Users, Edit, Trash2, Eye } from 'lucide-react';
+import { Plus, Package, TrendingUp, DollarSign, Users, Edit, Trash2, Eye, Star } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
@@ -30,6 +30,16 @@ interface Product {
   sellerName: string;
   stock: number;
   rating?: number;
+}
+
+interface Review {
+  id: string;
+  productId: string;
+  customerId: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  date: string;
 }
 
 interface Seller {
@@ -74,6 +84,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
   const [seller, setSeller] = useState<Seller | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [productReviews, setProductReviews] = useState<{[productId: string]: Review[]}>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,6 +107,67 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     description: '',
     image: '' // can be URL or base64 data URL
   });
+
+  // ==== REVIEW HELPER FUNCTIONS ====
+  
+  const getProductRating = (productId: string): number => {
+    const reviews = productReviews[productId];
+    if (!reviews || reviews.length === 0) return 0;
+    
+    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+    return totalRating / reviews.length;
+  };
+
+  const getProductReviewCount = (productId: string): number => {
+    return productReviews[productId]?.length || 0;
+  };
+
+  const renderStars = (rating: number) => {
+    return (
+      <div className="flex items-center">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={`w-4 h-4 ${
+              star <= rating 
+                ? 'fill-yellow-400 text-yellow-400' 
+                : 'text-gray-300'
+            }`}
+          />
+        ))}
+        <span className="ml-1 text-sm text-gray-600">({rating.toFixed(1)})</span>
+      </div>
+    );
+  };
+
+  // ==== FETCH REVIEWS FOR PRODUCTS ====
+
+  const fetchProductReviews = async (productIds: string[]) => {
+    try {
+      const reviewsData: {[productId: string]: Review[]} = {};
+      
+      // Fetch reviews for each product
+      for (const productId of productIds) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/products/${productId}/reviews`);
+          if (response.ok) {
+            const reviews = await response.json();
+            reviewsData[productId] = reviews;
+          } else {
+            reviewsData[productId] = [];
+          }
+        } catch (err) {
+          console.error(`Error fetching reviews for product ${productId}:`, err);
+          reviewsData[productId] = [];
+        }
+      }
+
+      setProductReviews(reviewsData);
+      console.log('✅ Product reviews loaded:', reviewsData);
+    } catch (err) {
+      console.error('Error fetching product reviews:', err);
+    }
+  };
 
   // ==== IMAGE HANDLERS (BASE64, NO /api/upload) ====
 
@@ -273,7 +345,7 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
     );
   };
 
-  // ==== FETCH SELLER DATA, PRODUCTS, ORDERS ====
+  // ==== FETCH SELLER DATA, PRODUCTS, ORDERS, AND REVIEWS ====
 
   useEffect(() => {
     const fetchSellerData = async () => {
@@ -307,6 +379,12 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
         const sellerProducts = await productsResponse.json();
         setProducts(sellerProducts);
         console.log('✅ Seller products loaded:', sellerProducts);
+
+        // ✅ NEW: Fetch reviews for all seller products
+        if (sellerProducts.length > 0) {
+          const productIds = sellerProducts.map((p: Product) => p.id);
+          await fetchProductReviews(productIds);
+        }
 
         // ✅ Protected: fetch orders for this seller (orders containing their products)
         const ordersResponse = await authFetch(`/api/sellers/${currentSeller.id}/orders`);
@@ -436,6 +514,12 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
       const newProduct = await response.json();
       setProducts(prev => [...prev, newProduct]);
 
+      // Initialize empty reviews for new product
+      setProductReviews(prev => ({
+        ...prev,
+        [newProduct.id]: []
+      }));
+
       // Reset form
       setProductForm({
         name: '',
@@ -535,6 +619,14 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
       }
 
       setProducts(prev => prev.filter(p => p.id !== productId));
+      
+      // Remove reviews for deleted product
+      setProductReviews(prev => {
+        const updated = { ...prev };
+        delete updated[productId];
+        return updated;
+      });
+
       toast.success('Product deleted successfully!');
 
     } catch (err) {
@@ -554,7 +646,17 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
   const totalProducts = products.length;
   const totalOrders = orders.length; // All orders for count
   const completedOrdersCount = completedOrders.length;
-  const averageRating = seller?.rating || 0;
+  
+  // ✅ NEW: Calculate overall seller rating from all product reviews
+  const calculateOverallRating = (): number => {
+    const allReviews = Object.values(productReviews).flat();
+    if (allReviews.length === 0) return 0;
+    
+    const totalRating = allReviews.reduce((sum, review) => sum + review.rating, 0);
+    return totalRating / allReviews.length;
+  };
+  
+  const overallRating = calculateOverallRating();
 
   // ==== LOADING / ERROR STATES ====
 
@@ -659,8 +761,10 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
                 <Users className="w-5 h-5 text-olive-green" />
               </div>
             </div>
-            <p className="font-['Poppins'] text-3xl text-foreground">{averageRating.toFixed(1)}</p>
-            <p className="text-sm text-muted-foreground mt-1">Customer rating</p>
+            <p className="font-['Poppins'] text-3xl text-foreground">{overallRating.toFixed(1)}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              From {Object.values(productReviews).flat().length} reviews
+            </p>
           </Card>
         </div>
 
@@ -971,51 +1075,59 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
               </DialogContent>
             </Dialog>
 
-            {/* Product list */}
+            {/* Product list with reviews */}
             <div className="space-y-4">
-              {products.map(product => (
-                <Card key={product.id} className="p-4 bg-white border border-border">
-                  <div className="flex items-center justify-between gap-4">
-                    {/* Optional thumbnail */}
-                    {product.image && (
-                      <div className="w-16 h-16 flex-shrink-0 overflow-hidden rounded-md border border-border">
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="w-full h-full object-cover"
-                        />
+              {products.map(product => {
+                const rating = getProductRating(product.id);
+                const reviewCount = getProductReviewCount(product.id);
+                
+                return (
+                  <Card key={product.id} className="p-4 bg-white border border-border">
+                    <div className="flex items-center justify-between gap-4">
+                      {/* Optional thumbnail */}
+                      {product.image && (
+                        <div className="w-16 h-16 flex-shrink-0 overflow-hidden rounded-md border border-border">
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <h3 className="font-['Lato'] mb-1">{product.name}</h3>
+                        <div className="flex items-center space-x-4 text-sm text-foreground/70 mb-2">
+                          <span className="font-['Roboto_Mono']">BD {product.price.toFixed(3)}</span>
+                          <span>Stock: {product.stock}</span>
+                          <Badge variant={product.stock > 10 ? 'default' : 'secondary'} className="bg-secondary text-secondary-foreground">
+                            {product.category}
+                          </Badge>
+                        </div>
+                      
                       </div>
-                    )}
-                    <div className="flex-1">
-                      <h3 className="font-['Lato'] mb-1">{product.name}</h3>
-                      <div className="flex items-center space-x-4 text-sm text-foreground/70">
-                        <span className="font-['Roboto_Mono']">BD {product.price.toFixed(3)}</span>
-                        <span>Stock: {product.stock}</span>
-                        <Badge variant={product.stock > 10 ? 'default' : 'secondary'} className="bg-secondary text-secondary-foreground">
-                          {product.category}
-                        </Badge>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditProduct(product)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteProduct(product.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditProduct(product)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteProduct(product.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                    
+                    
+                  </Card>
+                );
+              })}
 
               {products.length === 0 && (
                 <div className="text-center py-8 text-foreground/70">
@@ -1159,16 +1271,16 @@ export function SellerDashboard({ onNavigate, currentUser }: SellerDashboardProp
             </Card>
 
             {orders.length > 0 && (
-  <div className="mt-6">
-    <Button
-      variant="outline"
-      className="w-full"
-      onClick={() => onNavigate('seller-order-management')}
-    >
-      View All Orders
-    </Button>
-  </div>
-)}
+              <div className="mt-6">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => onNavigate('seller-order-management')}
+                >
+                  View All Orders
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
