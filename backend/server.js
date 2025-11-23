@@ -3,8 +3,24 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
+const cron = require('node-cron');
+const { exec } = require('child_process');
 
 const app = express();
+
+// Automated backup scheduling - runs monthly
+cron.schedule('0 2 1 * *', () => {
+  console.log('Starting automated monthly backup...');
+  exec('bash ./scripts/backup.sh', (error, stdout, stderr) => {
+    if (error) {
+      console.error('Backup failed:', error);
+    } else {
+      console.log('Monthly backup completed successfully');
+      console.log(stdout);
+    }
+  });
+});
+
 
 // Middleware
 app.use(cors());
@@ -1079,4 +1095,5 @@ app.delete("/api/users/:userId/cart", async (req, res) => {
 const port = process.env.PORT || 5000;
 app.listen(port, () => {
   console.log(`🚀 Server running on http://localhost:${port}`);
+  console.log('Automated backup scheduled for 1st of every month at 2 AM');
 });
