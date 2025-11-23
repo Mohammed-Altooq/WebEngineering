@@ -5,7 +5,16 @@
 
   ## Running the code
 
-  Run `npm i` to install the dependencies.
+  Frontend Setup:
 
-  Run `npm run dev` to start the development server.
-  
+  Open a terminal in the main project directory
+  Run npm i to install the dependencies
+  Run npm run dev to start the development server
+
+  Backend Setup:
+
+  Open a second terminal and navigate to the backend folder: cd backend
+  Run npm i to install backend dependencies
+  Run npm start or node server.js to start the backend server
+
+  Note: Both terminals must remain open for the application to function properly - the frontend connects to the backend API for all data operations.
