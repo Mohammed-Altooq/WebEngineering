@@ -8,8 +8,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Increase from default 100kb to 10mb
-app.use(express.urlencoded({ limit: '10mb', extended: true })); // Also increase urlencoded limit
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // -------------------
 //  MongoDB Connection
@@ -32,14 +32,14 @@ mongoose
 //  Schemas & Models
 // -------------------
 
-// Users: updated for authentication + phone field
+// Users: ONLY customers now
 const userSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['customer', 'seller'], required: true },
+    role: { type: String, enum: ['customer'], required: true, default: 'customer' },
     phone: { type: String },
     createdAt: { type: Date, default: Date.now }
   },
@@ -47,19 +47,24 @@ const userSchema = new mongoose.Schema(
 );
 const User = mongoose.model("User", userSchema);
 
-// Sellers
+// Sellers: Now includes authentication fields
 const sellerSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
-    name: String,
-    type: String,
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    role: { type: String, enum: ['seller'], required: true, default: 'seller' },
+    phone: { type: String },
+    type: { type: String, default: "artisan" },
     description: String,
     location: String,
     image: String,
     contactEmail: String,
     contactPhone: String,
-    rating: Number,
-    totalSales: Number
+    rating: { type: Number, default: 0 },
+    totalSales: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now }
   },
   { collection: "sellers" }
 );
@@ -98,7 +103,7 @@ const reviewSchema = new mongoose.Schema(
 );
 const Review = mongoose.model("Review", reviewSchema);
 
-// Orders - FIXED: Added _id: false to prevent _id in items array
+// Orders
 const orderSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
@@ -110,25 +115,25 @@ const orderSchema = new mongoose.Schema(
         productName: String,
         quantity: Number,
         price: Number,
-        sellerId: String, // Added to track which seller this item belongs to
-        itemStatus: { type: String, default: 'Pending' }, // Individual item status
-        _id: false  // This prevents Mongoose from adding _id to each item
+        sellerId: String,
+        itemStatus: { type: String, default: 'Pending' },
+        _id: false
       }
     ],
     total: Number,
     status: String,
     date: String,
     shippingAddress: String,
-    paymentMethod: String  // Added this field
+    paymentMethod: String
   },
   { collection: "orders" }
 );
 const Order = mongoose.model("Order", orderSchema);
 
-// UPDATED Cart Schema - One cart per user with items array
+// Cart
 const cartSchema = new mongoose.Schema(
   {
-    userId: { type: String, required: true, unique: true }, // One cart per user
+    userId: { type: String, required: true, unique: true },
     items: [
       {
         productId: String,
@@ -154,76 +159,199 @@ function generateId(prefix) {
 }
 
 // -------------------
-//  Authentication Routes - TRANSACTION SAFE
+//  Authentication Routes
 // -------------------
 
-// Register endpoint - TRANSACTION SAFE
-app.post("/api/auth/register", async (req, res) => {
-  const session = await mongoose.startSession();
-  
+// Register customer
+app.post("/api/auth/register/customer", async (req, res) => {
   try {
-    const result = await session.withTransaction(async () => {
-      const { name, email, password, role } = req.body;
+    const { name, email, password, phone } = req.body;
 
-      if (!name || !email || !password || !role) {
-        throw new Error("All fields are required");
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Name, email, and password are required" });
+    }
+
+    // Check if user already exists (check both collections)
+    const existingUser = await User.findOne({ email });
+    const existingSeller = await Seller.findOne({ email });
+    
+    if (existingUser || existingSeller) {
+      return res.status(400).json({ error: "User with this email already exists" });
+    }
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const userId = generateId("u");
+
+    const user = await User.create({
+      id: userId,
+      name,
+      email,
+      password: hashedPassword,
+      role: 'customer',
+      phone
+    });
+
+    res.status(201).json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    });
+
+  } catch (err) {
+    console.error("Customer registration error:", err);
+    res.status(500).json({ error: "Failed to register customer" });
+  }
+});
+
+// Register seller
+app.post("/api/auth/register/seller", async (req, res) => {
+  try {
+    const { name, email, password, phone, type, description, location } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Name, email, and password are required" });
+    }
+
+    // Check if user already exists (check both collections)
+    const existingUser = await User.findOne({ email });
+    const existingSeller = await Seller.findOne({ email });
+    
+    if (existingUser || existingSeller) {
+      return res.status(400).json({ error: "User with this email already exists" });
+    }
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const sellerId = generateId("s");
+
+    const seller = await Seller.create({
+      id: sellerId,
+      name,
+      email,
+      password: hashedPassword,
+      role: 'seller',
+      phone,
+      type: type || "artisan",
+      description: description || "",
+      location: location || "",
+      image: "",
+      contactEmail: email,
+      contactPhone: phone || "",
+      rating: 0,
+      totalSales: 0
+    });
+
+    res.status(201).json({
+      id: seller.id,
+      name: seller.name,
+      email: seller.email,
+      role: seller.role
+    });
+
+  } catch (err) {
+    console.error("Seller registration error:", err);
+    res.status(500).json({ error: "Failed to register seller" });
+  }
+});
+
+// Unified register endpoint (for backward compatibility)
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { role } = req.body;
+    
+    if (role === 'customer') {
+      // Customer registration logic
+      const { name, email, password, phone } = req.body;
+      
+      if (!name || !email || !password) {
+        return res.status(400).json({ error: "Name, email, and password are required" });
       }
 
-      const existingUser = await User.findOne({ email }).session(session);
-      if (existingUser) {
-        throw new Error("User with this email already exists");
+      // Check if user already exists (check both collections)
+      const existingUser = await User.findOne({ email });
+      const existingSeller = await Seller.findOne({ email });
+      
+      if (existingUser || existingSeller) {
+        return res.status(400).json({ error: "User with this email already exists" });
       }
 
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
       const userId = generateId("u");
 
-      const user = await User.create([{
+      const user = await User.create({
         id: userId,
         name,
         email,
         password: hashedPassword,
-        role
-      }], { session });
+        role: 'customer',
+        phone
+      });
 
-      if (role === 'seller') {
-        const sellerId = generateId("s");
-        await Seller.create([{
-          id: sellerId,
-          name,
-          type: "artisan",
-          description: "",
-          location: "",
-          image: "",
-          contactEmail: email,
-          contactPhone: "",
-          rating: 0,
-          totalSales: 0
-        }], { session });
+      res.status(201).json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      });
+      
+    } else if (role === 'seller') {
+      // Seller registration logic
+      const { name, email, password, phone, type, description, location } = req.body;
+      
+      if (!name || !email || !password) {
+        return res.status(400).json({ error: "Name, email, and password are required" });
       }
 
-      return user[0];
-    });
+      // Check if user already exists (check both collections)
+      const existingUser = await User.findOne({ email });
+      const existingSeller = await Seller.findOne({ email });
+      
+      if (existingUser || existingSeller) {
+        return res.status(400).json({ error: "User with this email already exists" });
+      }
 
-    res.status(201).json({
-      id: result.id,
-      name: result.name,
-      email: result.email,
-      role: result.role
-    });
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      const sellerId = generateId("s");
+
+      const seller = await Seller.create({
+        id: sellerId,
+        name,
+        email,
+        password: hashedPassword,
+        role: 'seller',
+        phone,
+        type: type || "artisan",
+        description: description || "",
+        location: location || "",
+        image: "",
+        contactEmail: email,
+        contactPhone: phone || "",
+        rating: 0,
+        totalSales: 0
+      });
+
+      res.status(201).json({
+        id: seller.id,
+        name: seller.name,
+        email: seller.email,
+        role: seller.role
+      });
+      
+    } else {
+      return res.status(400).json({ error: "Invalid role. Must be 'customer' or 'seller'" });
+    }
 
   } catch (err) {
-    console.error("Registration error:", err);
-    if (err.message.includes("required") || err.message.includes("exists")) {
-      return res.status(400).json({ error: err.message });
-    }
+    console.error("Unified registration error:", err);
     res.status(500).json({ error: "Failed to register user" });
-  } finally {
-    await session.endSession();
   }
 });
 
-// Login endpoint (NO TRANSACTION NEEDED - just reading)
+// Unified login endpoint
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -232,7 +360,15 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const user = await User.findOne({ email });
+    // Check both collections for the user
+    let user = await User.findOne({ email });
+    let userType = 'customer';
+    
+    if (!user) {
+      user = await Seller.findOne({ email });
+      userType = 'seller';
+    }
+
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
@@ -246,7 +382,8 @@ app.post("/api/auth/login", async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role
+      role: user.role,
+      userType: userType
     });
 
   } catch (err) {
@@ -259,7 +396,7 @@ app.post("/api/auth/login", async (req, res) => {
 //  USER PROFILE Routes
 // -------------------
 
-// Get user profile by ID (NO TRANSACTION NEEDED - just reading)
+// Get customer profile by ID
 app.get("/api/users/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -278,7 +415,7 @@ app.get("/api/users/:userId", async (req, res) => {
   }
 });
 
-// Update user profile by ID (NO TRANSACTION NEEDED - single collection)
+// Update customer profile by ID
 app.put("/api/users/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -317,7 +454,7 @@ app.get("/", (req, res) => {
 
 // ----- PRODUCTS -----
 
-// Get all products (NO TRANSACTION NEEDED - just reading)
+// Get all products
 app.get("/api/products", async (req, res) => {
   try {
     const products = await Product.find().lean();
@@ -328,7 +465,7 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
-// Get a single product by custom id (NO TRANSACTION NEEDED - just reading)
+// Get a single product by custom id
 app.get("/api/products/:id", async (req, res) => {
   try {
     const product = await Product.findOne({ id: req.params.id }).lean();
@@ -340,7 +477,7 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
-// Create a new product (NO TRANSACTION NEEDED - single collection)
+// Create a new product
 app.post("/api/products", async (req, res) => {
   try {
     const newId = generateId("p");
@@ -355,7 +492,7 @@ app.post("/api/products", async (req, res) => {
   }
 });
 
-// Update product by custom id (NO TRANSACTION NEEDED - single collection)
+// Update product by custom id
 app.patch("/api/products/:id", async (req, res) => {
   try {
     const updated = await Product.findOneAndUpdate(
@@ -371,7 +508,7 @@ app.patch("/api/products/:id", async (req, res) => {
   }
 });
 
-// Delete product by custom id (NO TRANSACTION NEEDED - single collection)
+// Delete product by custom id
 app.delete("/api/products/:id", async (req, res) => {
   try {
     const deleted = await Product.findOneAndDelete({ id: req.params.id }).lean();
@@ -385,30 +522,38 @@ app.delete("/api/products/:id", async (req, res) => {
 
 // ----- SELLERS -----
 
-// Get all sellers (NO TRANSACTION NEEDED - just reading)
+// Get all sellers
 app.get("/api/sellers", async (req, res) => {
   try {
     const sellers = await Seller.find().lean();
-    res.json(sellers);
+    // Remove sensitive fields
+    const safeSellers = sellers.map(seller => {
+      const { password, ...safeData } = seller;
+      return safeData;
+    });
+    res.json(safeSellers);
   } catch (err) {
     console.error("Error fetching sellers:", err);
     res.status(500).json({ error: "Failed to fetch sellers" });
   }
 });
 
-// Get one seller by id (NO TRANSACTION NEEDED - just reading)
+// Get one seller by id
 app.get("/api/sellers/:id", async (req, res) => {
   try {
     const seller = await Seller.findOne({ id: req.params.id }).lean();
     if (!seller) return res.status(404).json({ error: "Seller not found" });
-    res.json(seller);
+    
+    // Remove sensitive fields
+    const { password, ...safeData } = seller;
+    res.json(safeData);
   } catch (err) {
     console.error("Error fetching seller:", err);
     res.status(500).json({ error: "Failed to fetch seller" });
   }
 });
 
-// Products by seller (NO TRANSACTION NEEDED - just reading)
+// Products by seller
 app.get("/api/sellers/:id/products", async (req, res) => {
   try {
     const products = await Product.find({ sellerId: req.params.id }).lean();
@@ -419,16 +564,23 @@ app.get("/api/sellers/:id/products", async (req, res) => {
   }
 });
 
-// Update seller (NO TRANSACTION NEEDED - single collection)
+// Update seller
 app.patch("/api/sellers/:id", async (req, res) => {
   try {
+    // Don't allow updating sensitive fields through this endpoint
+    const { password, email, role, ...updateData } = req.body;
+    
     const updated = await Seller.findOneAndUpdate(
       { id: req.params.id },
-      req.body,
+      updateData,
       { new: true }
     ).lean();
+    
     if (!updated) return res.status(404).json({ error: "Seller not found" });
-    res.json(updated);
+    
+    // Remove sensitive fields from response
+    const { password: pwd, ...safeData } = updated;
+    res.json(safeData);
   } catch (err) {
     console.error("Error updating seller:", err);
     res.status(500).json({ error: "Failed to update seller" });
@@ -437,18 +589,16 @@ app.patch("/api/sellers/:id", async (req, res) => {
 
 // ----- REVIEWS -----
 
-// Reviews for a product (NO TRANSACTION NEEDED - just reading)
+// Reviews for a product
 app.get("/api/products/:id/reviews", async (req, res) => {
   try {
     const productId = req.params.id;
 
-    // get all, newest first
     const raw = await Review.find({ productId })
       .sort({ date: -1 })
       .lean();
 
-    // keep only the latest review per customerId
-    const map = new Map(); // customerId -> review
+    const map = new Map();
     for (const r of raw) {
       if (!map.has(r.customerId)) {
         map.set(r.customerId, r);
@@ -472,7 +622,6 @@ app.post("/api/products/:id/reviews", async (req, res) => {
       const productId = req.params.id;
       const { rating, comment, customerId, customerName } = req.body;
 
-      // basic validation
       if (!rating || rating < 1 || rating > 5) {
         throw new Error("Rating must be between 1 and 5");
       }
@@ -480,12 +629,10 @@ app.post("/api/products/:id/reviews", async (req, res) => {
         throw new Error("customerId is required");
       }
 
-      // 1) check if this user already reviewed this product
       let existing = await Review.findOne({ productId, customerId }).session(session);
 
       let review;
       if (existing) {
-        // update existing review
         existing.rating = rating;
         existing.comment = comment;
         existing.customerName = customerName || existing.customerName;
@@ -493,7 +640,6 @@ app.post("/api/products/:id/reviews", async (req, res) => {
         await existing.save({ session });
         review = existing;
       } else {
-        // create new review
         const newId = generateId("r");
         const newReview = await Review.create([{
           id: newId,
@@ -507,13 +653,12 @@ app.post("/api/products/:id/reviews", async (req, res) => {
         review = newReview[0];
       }
 
-      // 2) recompute average rating using ONLY the latest review per customer
       const raw = await Review.find({ productId })
-        .sort({ date: -1 })  // newest first
+        .sort({ date: -1 })
         .session(session)
         .lean();
 
-      const map = new Map(); // customerId -> latest review
+      const map = new Map();
       for (const r of raw) {
         if (!map.has(r.customerId)) {
           map.set(r.customerId, r);
@@ -527,7 +672,6 @@ app.post("/api/products/:id/reviews", async (req, res) => {
             uniqueReviews.length
           : 0;
 
-      // 3) store the new average on the product (within transaction)
       await Product.findOneAndUpdate(
         { id: productId },
         { rating: avgRating },
@@ -537,7 +681,6 @@ app.post("/api/products/:id/reviews", async (req, res) => {
       return { review, avgRating };
     });
 
-    // 4) send back review + new average
     res.status(result.review.isNew !== false ? 201 : 200).json(result);
 
   } catch (err) {
@@ -553,15 +696,11 @@ app.post("/api/products/:id/reviews", async (req, res) => {
 
 // ----- ORDERS -----
 
-// Get all orders for a user (NO TRANSACTION NEEDED - just reading)
+// Get all orders for a user
 app.get("/api/users/:userId/orders", async (req, res) => {
   try {
     const { userId } = req.params;
-    console.log('📦 Fetching orders for user (customerId):', userId);
-
     const orders = await Order.find({ customerId: userId }).lean();
-    console.log(`📦 Found ${orders.length} orders for user`);
-
     res.json(orders);
   } catch (err) {
     console.error("Error fetching user orders:", err);
@@ -569,70 +708,37 @@ app.get("/api/users/:userId/orders", async (req, res) => {
   }
 });
 
-// Legacy route (NO TRANSACTION NEEDED - just reading)
-app.get("/api/orders/user/:userId", async (req, res) => {
-  try {
-    const orders = await Order.find({ customerId: req.params.userId }).lean();
-    res.json(orders);
-  } catch (err) {
-    console.error("Error fetching orders:", err);
-    res.status(500).json({ error: "Failed to fetch orders" });
-  }
-});
-
-// Get orders for a seller (NO TRANSACTION NEEDED - just reading)
+// Get orders for a seller
 app.get("/api/sellers/:sellerId/orders", async (req, res) => {
   try {
     const { sellerId } = req.params;
     
-    console.log('📦 Fetching orders for seller:', sellerId);
-    
-    // First get all products by this seller
     const sellerProducts = await Product.find({ sellerId }).lean();
     const sellerProductIds = sellerProducts.map(p => p.id);
     
-    console.log('🛍️ Seller products:', sellerProductIds);
-    
     if (sellerProductIds.length === 0) {
-      console.log('❌ No products found for seller');
-      return res.json([]); // No products, no orders
+      return res.json([]);
     }
     
-    // Find all orders that contain products from this seller
     const orders = await Order.find({
       "items.productId": { $in: sellerProductIds }
     }).lean();
     
-    console.log(`📋 Found ${orders.length} orders containing seller's products`);
-    
-    // Return the COMPLETE orders with ALL item details including itemStatus and sellerId
     const sellerOrders = orders.map(order => {
-      console.log(`📦 Processing order ${order.id} with items:`, order.items.map(item => ({
-        productId: item.productId,
-        productName: item.productName,
-        itemStatus: item.itemStatus,
-        sellerId: item.sellerId
-      })));
-      
-      // Return the complete order - don't filter items, show all items but highlight seller's items
       const orderWithSellerInfo = {
         ...order,
-        // Keep ALL items so seller can see the complete order context
         items: order.items.map(item => ({
           ...item,
-          isSellerItem: sellerProductIds.includes(item.productId) // Flag seller's items
+          isSellerItem: sellerProductIds.includes(item.productId)
         })),
-        // Calculate seller's portion of the order total
         sellerTotal: order.items
           .filter(item => sellerProductIds.includes(item.productId))
           .reduce((sum, item) => sum + (item.price * item.quantity), 0)
       };
       
-      console.log(`✅ Processed order ${order.id} for seller view`);
       return orderWithSellerInfo;
     });
     
-    console.log('✅ Returning seller orders:', sellerOrders.length);
     res.json(sellerOrders);
   } catch (err) {
     console.error("Error fetching seller orders:", err);
@@ -640,7 +746,7 @@ app.get("/api/sellers/:sellerId/orders", async (req, res) => {
   }
 });
 
-// Update order status (NO TRANSACTION NEEDED - single field update)
+// Update order status
 app.patch("/api/orders/:orderId/status", async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -668,74 +774,45 @@ app.patch("/api/orders/:orderId/status", async (req, res) => {
   }
 });
 
-// Update individual item status within an order (NO TRANSACTION NEEDED - single document update)
+// Update individual item status within an order
 app.patch("/api/orders/:orderId/items/:productId/status", async (req, res) => {
   try {
     const { orderId, productId } = req.params;
     const { itemStatus, sellerId } = req.body;
-    
-    console.log('=== UPDATING ITEM STATUS ===');
-    console.log('Order ID:', orderId);
-    console.log('Product ID:', productId);
-    console.log('New Status:', itemStatus);
-    console.log('Seller ID:', sellerId);
     
     const validItemStatuses = ['Pending', 'Confirmed', 'Being Prepared', 'Ready to Ship', 'Shipped', 'Delivered', 'Cancelled'];
     if (!validItemStatuses.includes(itemStatus)) {
       return res.status(400).json({ error: "Invalid item status" });
     }
     
-    // Find the order and update the specific item
     const order = await Order.findOne({ id: orderId });
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
     
-    console.log('Found order with items:', order.items.map(item => ({ 
-      productId: item.productId, 
-      sellerId: item.sellerId, 
-      currentStatus: item.itemStatus 
-    })));
-    
-    // Find the item in the order that belongs to this seller
     const itemIndex = order.items.findIndex(item => 
       item.productId === productId && item.sellerId === sellerId
     );
     
     if (itemIndex === -1) {
-      console.log('Item not found. Available items:', order.items);
       return res.status(404).json({ error: "Item not found in order or not owned by seller" });
     }
     
-    console.log('Found item at index:', itemIndex, 'Current status:', order.items[itemIndex].itemStatus);
-    
-    // Update the item status
     order.items[itemIndex].itemStatus = itemStatus;
-    console.log('Updated item status to:', itemStatus);
     
-    // Auto-update overall order status based on item statuses
     const itemStatuses = order.items.map(item => item.itemStatus);
-    console.log('All item statuses after update:', itemStatuses);
     
-    // Only update overall order status when ALL items reach certain milestones
     if (itemStatuses.every(status => status === 'Delivered')) {
       order.status = 'Delivered';
-      console.log('All items delivered, updating order status to Delivered');
     } else if (itemStatuses.every(status => ['Shipped', 'Delivered'].includes(status))) {
       order.status = 'Shipped';
-      console.log('All items shipped/delivered, updating order status to Shipped');
     } else if (itemStatuses.every(status => ['Confirmed', 'Being Prepared', 'Ready to Ship', 'Shipped', 'Delivered'].includes(status))) {
       order.status = 'Confirmed';
-      console.log('All items confirmed or beyond, updating order status to Confirmed');
     } else if (itemStatuses.some(status => status === 'Cancelled') && itemStatuses.every(status => ['Cancelled', 'Pending'].includes(status))) {
       order.status = 'Cancelled';
-      console.log('Items cancelled/pending, updating order status to Cancelled');
     }
-    // If items have mixed statuses, keep the order status as is (usually 'Pending' or 'Confirmed')
     
     await order.save();
-    console.log('Order saved with new status:', order.status);
-    
     res.json(order);
   } catch (err) {
     console.error("Error updating item status:", err);
@@ -765,7 +842,6 @@ app.post("/api/users/:userId/orders", async (req, res) => {
         throw new Error("Order must contain at least one item");
       }
 
-      // 1) Get cart items if not provided in body
       let orderItems = items;
       if (!items.length) {
         const cart = await Cart.findOne({ userId }).session(session);
@@ -775,18 +851,16 @@ app.post("/api/users/:userId/orders", async (req, res) => {
         orderItems = cart.items;
       }
 
-      // 2) ENRICH ITEMS WITH SELLER INFO AND CHECK/UPDATE STOCK ATOMICALLY
       const enrichedItems = [];
       const sellerRevenue = {};
 
       for (const item of orderItems) {
         const qty = Number(item.quantity || 0);
         
-        // Atomic stock check and update - prevents race conditions
         const updatedProduct = await Product.findOneAndUpdate(
           { 
             id: item.productId,
-            stock: { $gte: qty } // Only proceed if enough stock
+            stock: { $gte: qty }
           },
           { $inc: { stock: -qty } },
           { 
@@ -810,14 +884,12 @@ app.post("/api/users/:userId/orders", async (req, res) => {
         
         enrichedItems.push(enrichedItem);
 
-        // Track seller revenue
         if (updatedProduct.sellerId) {
           const revenue = enrichedItem.price * qty;
           sellerRevenue[updatedProduct.sellerId] = (sellerRevenue[updatedProduct.sellerId] || 0) + revenue;
         }
       }
 
-      // 3) CREATE ORDER WITH ENRICHED ITEMS (within transaction)
       const finalTotal = total || enrichedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       
       const order = await Order.create([{
@@ -832,7 +904,6 @@ app.post("/api/users/:userId/orders", async (req, res) => {
         paymentMethod: paymentMethod || "Cash on Delivery"
       }], { session });
 
-      // 4) UPDATE SELLERS' TOTAL SALES (within transaction)
       for (const sellerId of Object.keys(sellerRevenue)) {
         await Seller.findOneAndUpdate(
           { id: sellerId },
@@ -841,7 +912,6 @@ app.post("/api/users/:userId/orders", async (req, res) => {
         );
       }
 
-      // 5) CLEAR USER'S CART (within transaction)
       await Cart.findOneAndDelete({ userId }, { session });
 
       return order[0];
@@ -862,18 +932,13 @@ app.post("/api/users/:userId/orders", async (req, res) => {
 
 // ----- CART ROUTES -----
 
-// Get cart for a user (NO TRANSACTION NEEDED - just reading)
+// Get cart for a user
 app.get("/api/users/:userId/cart", async (req, res) => {
   try {
-    console.log('=== CART GET ROUTE HIT ===');
-    console.log('User ID:', req.params.userId);
-    
     const { userId } = req.params;
     const cart = await Cart.findOne({ userId }).lean();
-    console.log('Cart found:', cart);
     
     if (!cart) {
-      console.log('No cart found, returning empty items');
       return res.json({ items: [] });
     }
     
@@ -885,22 +950,15 @@ app.get("/api/users/:userId/cart", async (req, res) => {
   }
 });
 
-// Add item to cart (NO TRANSACTION NEEDED - single collection)
+// Add item to cart
 app.post("/api/users/:userId/cart", async (req, res) => {
   try {
-    console.log('=== CART POST ROUTE HIT ===');
-    console.log('User ID:', req.params.userId);
-    console.log('Request body:', req.body);
-    
     const { userId } = req.params;
     const { productId, name, price, image, sellerName, quantity, stock } = req.body;
 
     let cart = await Cart.findOne({ userId });
-    console.log('Existing cart:', cart);
 
     if (!cart) {
-      // Create new cart for user
-      console.log('Creating new cart for user');
       cart = await Cart.create({
         userId,
         items: [{
@@ -913,21 +971,15 @@ app.post("/api/users/:userId/cart", async (req, res) => {
           stock
         }]
       });
-      console.log('New cart created:', cart);
     } else {
-      // Check if item already exists in cart
       const existingItemIndex = cart.items.findIndex(item => item.productId === productId);
       
       if (existingItemIndex > -1) {
-        // Update existing item quantity
-        console.log('Updating existing item quantity');
         cart.items[existingItemIndex].quantity = Math.min(
           cart.items[existingItemIndex].quantity + quantity,
           stock
         );
       } else {
-        // Add new item to cart
-        console.log('Adding new item to cart');
         cart.items.push({
           productId,
           name,
@@ -941,7 +993,6 @@ app.post("/api/users/:userId/cart", async (req, res) => {
 
       cart.updatedAt = new Date();
       await cart.save();
-      console.log('Cart updated:', cart);
     }
 
     res.status(201).json({ message: "Item added to cart", cart });
@@ -951,7 +1002,7 @@ app.post("/api/users/:userId/cart", async (req, res) => {
   }
 });
 
-// Update item quantity in cart (NO TRANSACTION NEEDED - single collection)
+// Update item quantity in cart
 app.patch("/api/users/:userId/cart/:productId", async (req, res) => {
   try {
     const { userId, productId } = req.params;
@@ -978,7 +1029,7 @@ app.patch("/api/users/:userId/cart/:productId", async (req, res) => {
   }
 });
 
-// Remove item from cart (NO TRANSACTION NEEDED - single collection)
+// Remove item from cart
 app.delete("/api/users/:userId/cart/:productId", async (req, res) => {
   try {
     const { userId, productId } = req.params;
@@ -999,7 +1050,7 @@ app.delete("/api/users/:userId/cart/:productId", async (req, res) => {
   }
 });
 
-// Clear entire cart (NO TRANSACTION NEEDED - single collection)
+// Clear entire cart
 app.delete("/api/users/:userId/cart", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1010,7 +1061,6 @@ app.delete("/api/users/:userId/cart", async (req, res) => {
     res.status(500).json({ error: "Failed to clear cart" });
   }
 });
-
 
 // -------------------
 //  Start server
