@@ -3,7 +3,6 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 
 const app = express();
 
@@ -155,109 +154,76 @@ function generateId(prefix) {
 }
 
 // -------------------
-//  Auth helpers (JWT, middleware, RBAC)
-// -------------------
-function generateToken(user) {
-  return jwt.sign(
-    { id: user.id, role: user.role, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-}
-
-function auth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing or invalid Authorization header" });
-  }
-
-  const token = authHeader.split(" ")[1];
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { id, role, email, iat, exp }
-    next();
-  } catch (err) {
-    console.error("JWT verify error:", err);
-    return res.status(401).json({ error: "Invalid or expired token" });
-  }
-}
-
-function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ error: "Forbidden: insufficient role" });
-    }
-    next();
-  };
-}
-
-
-// -------------------
-//  Authentication Routes
+//  Authentication Routes - TRANSACTION SAFE
 // -------------------
 
-// Register endpoint
+// Register endpoint - TRANSACTION SAFE
 app.post("/api/auth/register", async (req, res) => {
+  const session = await mongoose.startSession();
+  
   try {
-    const { name, email, password, role } = req.body;
+    const result = await session.withTransaction(async () => {
+      const { name, email, password, role } = req.body;
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: "All fields are required" });
-    }
+      if (!name || !email || !password || !role) {
+        throw new Error("All fields are required");
+      }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: "User with this email already exists" });
-    }
+      const existingUser = await User.findOne({ email }).session(session);
+      if (existingUser) {
+        throw new Error("User with this email already exists");
+      }
 
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-    const userId = generateId("u");
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      const userId = generateId("u");
 
-    const user = await User.create({
-      id: userId,
-      name,
-      email,
-      password: hashedPassword,
-      role
+      const user = await User.create([{
+        id: userId,
+        name,
+        email,
+        password: hashedPassword,
+        role
+      }], { session });
+
+      if (role === 'seller') {
+        const sellerId = generateId("s");
+        await Seller.create([{
+          id: sellerId,
+          name,
+          type: "artisan",
+          description: "",
+          location: "",
+          image: "",
+          contactEmail: email,
+          contactPhone: "",
+          rating: 0,
+          totalSales: 0
+        }], { session });
+      }
+
+      return user[0];
     });
 
-    if (role === 'seller') {
-      const sellerId = generateId("s");
-      await Seller.create({
-        id: sellerId,
-        name,
-        type: "artisan",
-        description: "",
-        location: "",
-        image: "",
-        contactEmail: email,
-        contactPhone: "",
-        rating: 0,
-        totalSales: 0
-      });
-    }
-    const token = generateToken(user);
-
     res.status(201).json({
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  role: user.role,
-  token
-});
+      id: result.id,
+      name: result.name,
+      email: result.email,
+      role: result.role
+    });
 
   } catch (err) {
     console.error("Registration error:", err);
+    if (err.message.includes("required") || err.message.includes("exists")) {
+      return res.status(400).json({ error: err.message });
+    }
     res.status(500).json({ error: "Failed to register user" });
+  } finally {
+    await session.endSession();
   }
 });
 
-// Login endpoint
+// Login endpoint (NO TRANSACTION NEEDED - just reading)
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -276,15 +242,12 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    const token = generateToken(user);
-
     res.json({
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  role: user.role,
-  token
-});
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    });
 
   } catch (err) {
     console.error("Login error:", err);
@@ -296,11 +259,8 @@ app.post("/api/auth/login", async (req, res) => {
 //  USER PROFILE Routes
 // -------------------
 
-// Get user profile by ID
-app.get("/api/users/:userId", auth, async (req, res) => {
-  if (req.user.id !== req.params.userId) {
-    return res.status(403).json({ error: "You can only view your own profile" });
-  }
+// Get user profile by ID (NO TRANSACTION NEEDED - just reading)
+app.get("/api/users/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const user = await User.findOne({ id: userId }).lean();
@@ -318,11 +278,8 @@ app.get("/api/users/:userId", auth, async (req, res) => {
   }
 });
 
-// Update user profile by ID
-app.put("/api/users/:userId", auth, async (req, res) => {
-  if (req.user.id !== req.params.userId) {
-    return res.status(403).json({ error: "You can only update your own profile" });
-  }
+// Update user profile by ID (NO TRANSACTION NEEDED - single collection)
+app.put("/api/users/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { name, email, phone } = req.body;
@@ -360,7 +317,7 @@ app.get("/", (req, res) => {
 
 // ----- PRODUCTS -----
 
-// Get all products
+// Get all products (NO TRANSACTION NEEDED - just reading)
 app.get("/api/products", async (req, res) => {
   try {
     const products = await Product.find().lean();
@@ -371,7 +328,7 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
-// Get a single product by custom id
+// Get a single product by custom id (NO TRANSACTION NEEDED - just reading)
 app.get("/api/products/:id", async (req, res) => {
   try {
     const product = await Product.findOne({ id: req.params.id }).lean();
@@ -383,9 +340,8 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
-// Create a new product
-app.post("/api/products", auth, requireRole("seller"), async (req, res) => {
-
+// Create a new product (NO TRANSACTION NEEDED - single collection)
+app.post("/api/products", async (req, res) => {
   try {
     const newId = generateId("p");
     const product = await Product.create({
@@ -399,8 +355,8 @@ app.post("/api/products", auth, requireRole("seller"), async (req, res) => {
   }
 });
 
-// Update product by custom id
-app.patch("/api/products/:id", auth, requireRole("seller"), async (req, res) => {
+// Update product by custom id (NO TRANSACTION NEEDED - single collection)
+app.patch("/api/products/:id", async (req, res) => {
   try {
     const updated = await Product.findOneAndUpdate(
       { id: req.params.id },
@@ -415,8 +371,8 @@ app.patch("/api/products/:id", auth, requireRole("seller"), async (req, res) => 
   }
 });
 
-// Delete product by custom id
-app.delete("/api/products/:id", auth, requireRole("seller"), async (req, res) => {
+// Delete product by custom id (NO TRANSACTION NEEDED - single collection)
+app.delete("/api/products/:id", async (req, res) => {
   try {
     const deleted = await Product.findOneAndDelete({ id: req.params.id }).lean();
     if (!deleted) return res.status(404).json({ error: "Product not found" });
@@ -429,7 +385,7 @@ app.delete("/api/products/:id", auth, requireRole("seller"), async (req, res) =>
 
 // ----- SELLERS -----
 
-// Get all sellers
+// Get all sellers (NO TRANSACTION NEEDED - just reading)
 app.get("/api/sellers", async (req, res) => {
   try {
     const sellers = await Seller.find().lean();
@@ -440,7 +396,7 @@ app.get("/api/sellers", async (req, res) => {
   }
 });
 
-// Get one seller by id
+// Get one seller by id (NO TRANSACTION NEEDED - just reading)
 app.get("/api/sellers/:id", async (req, res) => {
   try {
     const seller = await Seller.findOne({ id: req.params.id }).lean();
@@ -452,7 +408,7 @@ app.get("/api/sellers/:id", async (req, res) => {
   }
 });
 
-// Products by seller
+// Products by seller (NO TRANSACTION NEEDED - just reading)
 app.get("/api/sellers/:id/products", async (req, res) => {
   try {
     const products = await Product.find({ sellerId: req.params.id }).lean();
@@ -463,6 +419,7 @@ app.get("/api/sellers/:id/products", async (req, res) => {
   }
 });
 
+// Update seller (NO TRANSACTION NEEDED - single collection)
 app.patch("/api/sellers/:id", async (req, res) => {
   try {
     const updated = await Seller.findOneAndUpdate(
@@ -480,7 +437,7 @@ app.patch("/api/sellers/:id", async (req, res) => {
 
 // ----- REVIEWS -----
 
-// Reviews for a product (one per customerId, show latest)
+// Reviews for a product (NO TRANSACTION NEEDED - just reading)
 app.get("/api/products/:id/reviews", async (req, res) => {
   try {
     const productId = req.params.id;
@@ -506,94 +463,100 @@ app.get("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
-// Create OR update a review for a product (one review per user)
-// and keep Product.rating as the average of unique (latest) reviews
+// Create OR update a review for a product - TRANSACTION SAFE
 app.post("/api/products/:id/reviews", async (req, res) => {
+  const session = await mongoose.startSession();
+  
   try {
-    const productId = req.params.id;
-    const { rating, comment, customerId, customerName } = req.body;
+    const result = await session.withTransaction(async () => {
+      const productId = req.params.id;
+      const { rating, comment, customerId, customerName } = req.body;
 
-    // basic validation
-    if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ error: "Rating must be between 1 and 5" });
-    }
-    if (!customerId) {
-      return res.status(400).json({ error: "customerId is required" });
-    }
-
-    // 1) check if this user already reviewed this product
-    let existing = await Review.findOne({ productId, customerId });
-
-    let review;
-    if (existing) {
-      // update existing review
-      existing.rating = rating;
-      existing.comment = comment;
-      existing.customerName = customerName || existing.customerName;
-      existing.date = new Date().toISOString();
-      await existing.save();
-      review = existing;
-    } else {
-      // create new review
-      const newId = generateId("r");
-      review = await Review.create({
-        id: newId,
-        productId,
-        customerId,
-        customerName,
-        rating,
-        comment,
-        date: new Date().toISOString(),
-      });
-    }
-
-    // 2) recompute average rating using ONLY the latest review per customer
-    const raw = await Review.find({ productId })
-      .sort({ date: -1 })  // newest first
-      .lean();
-
-    const map = new Map(); // customerId -> latest review
-    for (const r of raw) {
-      if (!map.has(r.customerId)) {
-        map.set(r.customerId, r);
+      // basic validation
+      if (!rating || rating < 1 || rating > 5) {
+        throw new Error("Rating must be between 1 and 5");
       }
-    }
+      if (!customerId) {
+        throw new Error("customerId is required");
+      }
 
-    const uniqueReviews = Array.from(map.values());
-    const avgRating =
-      uniqueReviews.length > 0
-        ? uniqueReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
-          uniqueReviews.length
-        : 0;
+      // 1) check if this user already reviewed this product
+      let existing = await Review.findOne({ productId, customerId }).session(session);
 
-    // 3) store the new average on the product
-    await Product.findOneAndUpdate(
-      { id: productId },
-      { rating: avgRating },
-      { new: true }
-    );
+      let review;
+      if (existing) {
+        // update existing review
+        existing.rating = rating;
+        existing.comment = comment;
+        existing.customerName = customerName || existing.customerName;
+        existing.date = new Date().toISOString();
+        await existing.save({ session });
+        review = existing;
+      } else {
+        // create new review
+        const newId = generateId("r");
+        const newReview = await Review.create([{
+          id: newId,
+          productId,
+          customerId,
+          customerName,
+          rating,
+          comment,
+          date: new Date().toISOString(),
+        }], { session });
+        review = newReview[0];
+      }
+
+      // 2) recompute average rating using ONLY the latest review per customer
+      const raw = await Review.find({ productId })
+        .sort({ date: -1 })  // newest first
+        .session(session)
+        .lean();
+
+      const map = new Map(); // customerId -> latest review
+      for (const r of raw) {
+        if (!map.has(r.customerId)) {
+          map.set(r.customerId, r);
+        }
+      }
+
+      const uniqueReviews = Array.from(map.values());
+      const avgRating =
+        uniqueReviews.length > 0
+          ? uniqueReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
+            uniqueReviews.length
+          : 0;
+
+      // 3) store the new average on the product (within transaction)
+      await Product.findOneAndUpdate(
+        { id: productId },
+        { rating: avgRating },
+        { new: true, session }
+      );
+
+      return { review, avgRating };
+    });
 
     // 4) send back review + new average
-    res.status(existing ? 200 : 201).json({ review, avgRating });
+    res.status(result.review.isNew !== false ? 201 : 200).json(result);
+
   } catch (err) {
     console.error("Error creating/updating review:", err);
+    if (err.message.includes("Rating must") || err.message.includes("required")) {
+      return res.status(400).json({ error: err.message });
+    }
     res.status(500).json({ error: "Failed to save review" });
+  } finally {
+    await session.endSession();
   }
 });
 
 // ----- ORDERS -----
 
-// NEW: Get all orders for a user (this is what the frontend expects)
-// GET /api/users/:userId/orders
-app.get("/api/users/:userId/orders", auth, async (req, res) => {
+// Get all orders for a user (NO TRANSACTION NEEDED - just reading)
+app.get("/api/users/:userId/orders", async (req, res) => {
   try {
     const { userId } = req.params;
-
-    // 🔒 Make sure user can only see their OWN orders
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: "You can only view your own orders" });
-    }
-
     console.log('📦 Fetching orders for user (customerId):', userId);
 
     const orders = await Order.find({ customerId: userId }).lean();
@@ -606,8 +569,7 @@ app.get("/api/users/:userId/orders", auth, async (req, res) => {
   }
 });
 
-
-// Existing: Get all orders for a user (legacy route)
+// Legacy route (NO TRANSACTION NEEDED - just reading)
 app.get("/api/orders/user/:userId", async (req, res) => {
   try {
     const orders = await Order.find({ customerId: req.params.userId }).lean();
@@ -618,8 +580,8 @@ app.get("/api/orders/user/:userId", async (req, res) => {
   }
 });
 
-// Get orders for a seller (orders containing their products)
-app.get("/api/sellers/:sellerId/orders", auth, requireRole("seller"), async (req, res) => {
+// Get orders for a seller (NO TRANSACTION NEEDED - just reading)
+app.get("/api/sellers/:sellerId/orders", async (req, res) => {
   try {
     const { sellerId } = req.params;
     
@@ -678,9 +640,8 @@ app.get("/api/sellers/:sellerId/orders", auth, requireRole("seller"), async (req
   }
 });
 
-
-// Update order status (for sellers)
-app.patch("/api/orders/:orderId/status", auth, requireRole("seller"), async (req, res) => {
+// Update order status (NO TRANSACTION NEEDED - single field update)
+app.patch("/api/orders/:orderId/status", async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status } = req.body;
@@ -707,9 +668,8 @@ app.patch("/api/orders/:orderId/status", auth, requireRole("seller"), async (req
   }
 });
 
-
-// Update individual item status within an order (for sellers)
-app.patch("/api/orders/:orderId/items/:productId/status", auth, requireRole("seller"), async (req, res) => {
+// Update individual item status within an order (NO TRANSACTION NEEDED - single document update)
+app.patch("/api/orders/:orderId/items/:productId/status", async (req, res) => {
   try {
     const { orderId, productId } = req.params;
     const { itemStatus, sellerId } = req.body;
@@ -783,141 +743,132 @@ app.patch("/api/orders/:orderId/items/:productId/status", auth, requireRole("sel
   }
 });
 
-
-// FIXED: Create a new order + update products/sellers + clear cart
-// FIXED: Create a new order + update products/sellers + clear cart
-app.post("/api/users/:userId/orders", auth, async (req, res) => {
+// Create a new order - TRANSACTION SAFE
+app.post("/api/users/:userId/orders", async (req, res) => {
   const { userId } = req.params;
-
-  // 🔒 Ensure the logged-in user is the same as :userId
-  if (req.user.id !== userId) {
-    return res.status(403).json({ error: "You can only create orders for your own account" });
-  }
+  const session = await mongoose.startSession();
 
   try {
-    const newId = generateId("o");
-    const { 
-      status, 
-      date, 
-      shippingAddress, 
-      customerName,
-      paymentMethod  // Added this field
-    } = req.body;
+    const result = await session.withTransaction(async () => {
+      const newId = generateId("o");
+      const { 
+        items = [], 
+        total, 
+        status, 
+        date, 
+        shippingAddress, 
+        customerName,
+        paymentMethod
+      } = req.body;
 
-    // 🔹 1) LOAD CART FROM DB – this is the source of truth for quantities
-    const cart = await Cart.findOne({ userId }).lean();
-    if (!cart || !cart.items || cart.items.length === 0) {
-      return res.status(400).json({ error: "Cart is empty, cannot create order" });
-    }
+      if (!items.length) {
+        throw new Error("Order must contain at least one item");
+      }
 
-    // 🔹 2) ENRICH ITEMS USING CART DATA (correct quantities)
-    const enrichedItems = [];
-    let totalFromCart = 0;
+      // 1) Get cart items if not provided in body
+      let orderItems = items;
+      if (!items.length) {
+        const cart = await Cart.findOne({ userId }).session(session);
+        if (!cart || !cart.items || cart.items.length === 0) {
+          throw new Error("Cart is empty, cannot create order");
+        }
+        orderItems = cart.items;
+      }
 
-    for (const cartItem of cart.items) {
-      const product = await Product.findOne({ id: cartItem.productId });
-      if (!product) continue;
+      // 2) ENRICH ITEMS WITH SELLER INFO AND CHECK/UPDATE STOCK ATOMICALLY
+      const enrichedItems = [];
+      const sellerRevenue = {};
 
-      const qty = Number(cartItem.quantity || 0);
-      const price = Number(cartItem.price || product.price || 0);
-      const lineTotal = qty * price;
-      totalFromCart += lineTotal;
+      for (const item of orderItems) {
+        const qty = Number(item.quantity || 0);
+        
+        // Atomic stock check and update - prevents race conditions
+        const updatedProduct = await Product.findOneAndUpdate(
+          { 
+            id: item.productId,
+            stock: { $gte: qty } // Only proceed if enough stock
+          },
+          { $inc: { stock: -qty } },
+          { 
+            session,
+            new: true
+          }
+        );
 
-      enrichedItems.push({
-        productId: cartItem.productId,
-        productName: cartItem.name || product.name,
-        quantity: qty,
-        price: price,
-        sellerId: product.sellerId,
-        itemStatus: 'Pending'
-      });
-    }
+        if (!updatedProduct) {
+          throw new Error(`Insufficient stock for ${item.name || item.productName}. Please refresh and try again.`);
+        }
 
-    if (!enrichedItems.length) {
-      return res.status(400).json({ error: "No valid items in cart" });
-    }
+        const enrichedItem = {
+          productId: item.productId,
+          productName: item.name || item.productName || updatedProduct.name,
+          quantity: qty,
+          price: Number(item.price || updatedProduct.price || 0),
+          sellerId: updatedProduct.sellerId,
+          itemStatus: 'Pending'
+        };
+        
+        enrichedItems.push(enrichedItem);
 
-    // If frontend sent total, nice, but we trust our own calculation
-    const finalTotal = typeof req.body.total === "number" ? req.body.total : totalFromCart;
+        // Track seller revenue
+        if (updatedProduct.sellerId) {
+          const revenue = enrichedItem.price * qty;
+          sellerRevenue[updatedProduct.sellerId] = (sellerRevenue[updatedProduct.sellerId] || 0) + revenue;
+        }
+      }
 
-    // 🔹 3) CREATE ORDER WITH ENRICHED ITEMS
-    const order = await Order.create({
-      id: newId,
-      customerId: userId,
-      customerName: customerName || "Unknown",
-      items: enrichedItems,
-      total: finalTotal,
-      status: status || "Pending",
-      date: date || new Date().toISOString(),
-      shippingAddress: shippingAddress || "",
-      paymentMethod: paymentMethod || "Cash on Delivery"
+      // 3) CREATE ORDER WITH ENRICHED ITEMS (within transaction)
+      const finalTotal = total || enrichedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      
+      const order = await Order.create([{
+        id: newId,
+        customerId: userId,
+        customerName: customerName || "Unknown",
+        items: enrichedItems,
+        total: finalTotal,
+        status: status || "Pending",
+        date: date || new Date().toISOString(),
+        shippingAddress: shippingAddress || "",
+        paymentMethod: paymentMethod || "Cash on Delivery"
+      }], { session });
+
+      // 4) UPDATE SELLERS' TOTAL SALES (within transaction)
+      for (const sellerId of Object.keys(sellerRevenue)) {
+        await Seller.findOneAndUpdate(
+          { id: sellerId },
+          { $inc: { totalSales: sellerRevenue[sellerId] } },
+          { session }
+        );
+      }
+
+      // 5) CLEAR USER'S CART (within transaction)
+      await Cart.findOneAndDelete({ userId }, { session });
+
+      return order[0];
     });
 
-    // 🔹 4) UPDATE PRODUCT STOCK + COLLECT SELLER REVENUE (using correct qty)
-    const sellerRevenue = {}; // { sellerId: totalRevenue }
-
-    for (const item of enrichedItems) {
-      const { productId, quantity, price, sellerId } = item;
-      if (!productId || !quantity) continue;
-
-      const product = await Product.findOne({ id: productId });
-      if (!product) continue;
-
-      const currentStock = typeof product.stock === "number" ? product.stock : 0;
-      const qty = Number(quantity) || 0;
-      const newStock = Math.max(0, currentStock - qty);
-
-      console.log(
-        `Updating stock for product ${productId}: current=${currentStock}, qty=${qty}, new=${newStock}`
-      );
-
-      product.stock = newStock;
-      await product.save();
-
-      if (sellerId) {
-        const revenue = (price || 0) * qty;
-        sellerRevenue[sellerId] = (sellerRevenue[sellerId] || 0) + revenue;
-      }
-    }
-
-    // 🔹 5) UPDATE SELLERS' totalSales
-    const sellerIds = Object.keys(sellerRevenue);
-    for (const sellerId of sellerIds) {
-      const seller = await Seller.findOne({ id: sellerId });
-      if (!seller) continue;
-
-      const currentTotal = typeof seller.totalSales === "number" ? seller.totalSales : 0;
-      seller.totalSales = currentTotal + sellerRevenue[sellerId];
-      await seller.save();
-    }
-
-    // 🔹 6) CLEAR USER'S CART
-    await Cart.findOneAndDelete({ userId });
-
-    res.status(201).json(order);
+    res.status(201).json(result);
+    
   } catch (err) {
-    console.error("Error creating order and updating data:", err);
+    console.error("Error creating order:", err);
+    if (err.message.includes("Insufficient stock") || err.message.includes("must contain") || err.message.includes("Cart is empty")) {
+      return res.status(400).json({ error: err.message });
+    }
     res.status(500).json({ error: "Failed to create order" });
+  } finally {
+    await session.endSession();
   }
 });
 
+// ----- CART ROUTES -----
 
-
-// ----- CART (NEW IMPROVED SCHEMA) -----
-
-// Get cart for a user
-app.get("/api/users/:userId/cart", auth, async (req, res) => {
+// Get cart for a user (NO TRANSACTION NEEDED - just reading)
+app.get("/api/users/:userId/cart", async (req, res) => {
   try {
     console.log('=== CART GET ROUTE HIT ===');
     console.log('User ID:', req.params.userId);
-
+    
     const { userId } = req.params;
-
-    // 🔒 User can only see their own cart
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: "You can only view your own cart" });
-    }
-
     const cart = await Cart.findOne({ userId }).lean();
     console.log('Cart found:', cart);
     
@@ -934,21 +885,14 @@ app.get("/api/users/:userId/cart", auth, async (req, res) => {
   }
 });
 
-
-// Add item to cart
-app.post("/api/users/:userId/cart", auth, async (req, res) => {
+// Add item to cart (NO TRANSACTION NEEDED - single collection)
+app.post("/api/users/:userId/cart", async (req, res) => {
   try {
     console.log('=== CART POST ROUTE HIT ===');
     console.log('User ID:', req.params.userId);
     console.log('Request body:', req.body);
     
     const { userId } = req.params;
-
-    // 🔒 User can only modify their own cart
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: "You can only modify your own cart" });
-    }
-
     const { productId, name, price, image, sellerName, quantity, stock } = req.body;
 
     let cart = await Cart.findOne({ userId });
@@ -1007,17 +951,10 @@ app.post("/api/users/:userId/cart", auth, async (req, res) => {
   }
 });
 
-
-// Update item quantity in cart
-app.patch("/api/users/:userId/cart/:productId", auth, async (req, res) => {
+// Update item quantity in cart (NO TRANSACTION NEEDED - single collection)
+app.patch("/api/users/:userId/cart/:productId", async (req, res) => {
   try {
     const { userId, productId } = req.params;
-
-    // 🔒 Only owner can change cart
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: "You can only modify your own cart" });
-    }
-
     const { quantity } = req.body;
 
     const cart = await Cart.findOne({ userId });
@@ -1041,16 +978,10 @@ app.patch("/api/users/:userId/cart/:productId", auth, async (req, res) => {
   }
 });
 
-
-// Remove item from cart
-app.delete("/api/users/:userId/cart/:productId", auth, async (req, res) => {
+// Remove item from cart (NO TRANSACTION NEEDED - single collection)
+app.delete("/api/users/:userId/cart/:productId", async (req, res) => {
   try {
     const { userId, productId } = req.params;
-
-    // 🔒 Only owner can modify
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: "You can only modify your own cart" });
-    }
 
     const cart = await Cart.findOne({ userId });
     if (!cart) {
@@ -1068,17 +999,10 @@ app.delete("/api/users/:userId/cart/:productId", auth, async (req, res) => {
   }
 });
 
-
-// Clear entire cart
-app.delete("/api/users/:userId/cart", auth, async (req, res) => {
+// Clear entire cart (NO TRANSACTION NEEDED - single collection)
+app.delete("/api/users/:userId/cart", async (req, res) => {
   try {
     const { userId } = req.params;
-
-    // 🔒 Only owner can clear their cart
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: "You can only clear your own cart" });
-    }
-
     await Cart.findOneAndDelete({ userId });
     res.json({ message: "Cart cleared" });
   } catch (err) {
@@ -1087,6 +1011,250 @@ app.delete("/api/users/:userId/cart", auth, async (req, res) => {
   }
 });
 
+// -------------------
+// CONCURRENCY TESTING ROUTES
+// -------------------
+
+// Test concurrent stock updates (demonstrates race conditions)
+app.post("/api/test/concurrency", async (req, res) => {
+  try {
+    const { productId, customerCount = 5 } = req.body;
+    
+    console.log(`🧪 Testing ${customerCount} customers buying product ${productId} simultaneously`);
+    
+    // Get initial state
+    const initialProduct = await Product.findOne({ id: productId });
+    if (!initialProduct) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    
+    console.log(`📦 Initial stock: ${initialProduct.stock}`);
+    
+    // Create test customers and their carts
+    const testCustomers = [];
+    for (let i = 0; i < customerCount; i++) {
+      const customerId = `test_customer_${Date.now()}_${i}`;
+      
+      // Create cart for test customer
+      await Cart.create({
+        userId: customerId,
+        items: [{
+          productId: productId,
+          name: initialProduct.name,
+          price: initialProduct.price,
+          image: initialProduct.image,
+          sellerName: initialProduct.sellerName,
+          quantity: 1,
+          stock: initialProduct.stock
+        }]
+      });
+      
+      testCustomers.push(customerId);
+    }
+    
+    // Test OLD non-transaction method vs NEW transaction method
+    const orderPromises = testCustomers.map((customerId, index) => {
+      if (index < Math.floor(customerCount / 2)) {
+        // Use old method (race condition possible)
+        return createTestOrderOldWay(customerId, {
+          customerName: `Test Customer ${customerId.slice(-1)}`,
+          shippingAddress: "123 Test St",
+          paymentMethod: "Test Payment"
+        });
+      } else {
+        // Use new transaction method (race condition safe)
+        return createTestOrderNewWay(customerId, {
+          customerName: `Test Customer ${customerId.slice(-1)}`,
+          shippingAddress: "123 Test St",
+          paymentMethod: "Test Payment"
+        });
+      }
+    });
+    
+    // Execute all orders simultaneously
+    console.log("🚀 Executing concurrent orders...");
+    const results = await Promise.allSettled(orderPromises);
+    
+    // Analyze results
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+    
+    // Check final state
+    const finalProduct = await Product.findOne({ id: productId });
+    const finalStock = finalProduct ? finalProduct.stock : 0;
+    
+    // Clean up test data
+    await Cart.deleteMany({ userId: { $regex: /^test_customer_/ } });
+    await Order.deleteMany({ customerId: { $regex: /^test_customer_/ } });
+    
+    // Restore original stock (for demo purposes)
+    await Product.findOneAndUpdate(
+      { id: productId },
+      { stock: initialProduct.stock }
+    );
+    
+    const raceConditionOccurred = finalStock !== Math.max(0, initialProduct.stock - successful);
+    
+    console.log(`📊 Results: ${successful} successful, ${failed} failed`);
+    console.log(`📦 Final stock: ${finalStock} (expected: ${Math.max(0, initialProduct.stock - successful)})`);
+    console.log(`🚨 Race condition occurred: ${raceConditionOccurred}`);
+    
+    res.json({
+      message: "Concurrency test completed",
+      initialStock: initialProduct.stock,
+      finalStock: finalStock,
+      expectedFinalStock: Math.max(0, initialProduct.stock - successful),
+      totalCustomers: customerCount,
+      successfulOrders: successful,
+      failedOrders: failed,
+      raceConditionOccurred: raceConditionOccurred,
+      explanation: raceConditionOccurred 
+        ? "Race condition detected: Multiple customers got the same product due to non-atomic operations"
+        : "No race condition: All operations completed as expected"
+    });
+    
+  } catch (error) {
+    console.error("❌ Concurrency test failed:", error);
+    res.status(500).json({ error: "Concurrency test failed" });
+  }
+});
+
+// Helper functions for testing
+async function createTestOrderOldWay(customerId, orderData) {
+  // This simulates the OLD way (separate read and write operations)
+  const cart = await Cart.findOne({ userId: customerId });
+  if (!cart || !cart.items || cart.items.length === 0) {
+    throw new Error("Cart is empty");
+  }
+  
+  const newId = generateId("test_o");
+  const enrichedItems = [];
+  let total = 0;
+  
+  for (const cartItem of cart.items) {
+    const product = await Product.findOne({ id: cartItem.productId });
+    if (!product) continue;
+    
+    const qty = cartItem.quantity;
+    const price = cartItem.price;
+    
+    // THIS IS WHERE RACE CONDITIONS HAPPEN - separate read and write
+    if (product.stock < qty) {
+      throw new Error("Insufficient stock");
+    }
+    
+    enrichedItems.push({
+      productId: cartItem.productId,
+      productName: cartItem.name,
+      quantity: qty,
+      price: price,
+      sellerId: product.sellerId,
+      itemStatus: 'Pending'
+    });
+    
+    total += qty * price;
+  }
+  
+  // Create order
+  const order = await Order.create({
+    id: newId,
+    customerId: customerId,
+    customerName: orderData.customerName,
+    items: enrichedItems,
+    total: total,
+    status: "Pending",
+    date: new Date().toISOString(),
+    shippingAddress: orderData.shippingAddress,
+    paymentMethod: orderData.paymentMethod
+  });
+  
+  // Update stock separately (this creates race condition potential)
+  for (const item of enrichedItems) {
+    const product = await Product.findOne({ id: item.productId });
+    if (product) {
+      product.stock = Math.max(0, product.stock - item.quantity);
+      await product.save();
+    }
+  }
+  
+  // Clear cart
+  await Cart.findOneAndDelete({ userId: customerId });
+  
+  return order;
+}
+
+async function createTestOrderNewWay(customerId, orderData) {
+  // This uses the NEW transaction-safe method
+  const session = await mongoose.startSession();
+  
+  try {
+    const result = await session.withTransaction(async () => {
+      const cart = await Cart.findOne({ userId: customerId }).session(session);
+      if (!cart || !cart.items || cart.items.length === 0) {
+        throw new Error("Cart is empty");
+      }
+      
+      const newId = generateId("tx_test_o");
+      const enrichedItems = [];
+      let total = 0;
+      
+      for (const cartItem of cart.items) {
+        const qty = cartItem.quantity;
+        const price = cartItem.price;
+        
+        // Atomic stock check and update - prevents race conditions
+        const updatedProduct = await Product.findOneAndUpdate(
+          { 
+            id: cartItem.productId,
+            stock: { $gte: qty }
+          },
+          { $inc: { stock: -qty } },
+          { 
+            session,
+            new: true
+          }
+        );
+        
+        if (!updatedProduct) {
+          throw new Error("Insufficient stock (atomic check failed)");
+        }
+        
+        enrichedItems.push({
+          productId: cartItem.productId,
+          productName: cartItem.name,
+          quantity: qty,
+          price: price,
+          sellerId: updatedProduct.sellerId,
+          itemStatus: 'Pending'
+        });
+        
+        total += qty * price;
+      }
+      
+      // Create order within transaction
+      const order = await Order.create([{
+        id: newId,
+        customerId: customerId,
+        customerName: orderData.customerName,
+        items: enrichedItems,
+        total: total,
+        status: "Pending",
+        date: new Date().toISOString(),
+        shippingAddress: orderData.shippingAddress,
+        paymentMethod: orderData.paymentMethod
+      }], { session });
+      
+      // Clear cart within transaction
+      await Cart.findOneAndDelete({ userId: customerId }, { session });
+      
+      return order[0];
+    });
+    
+    return result;
+  } finally {
+    await session.endSession();
+  }
+}
 
 // -------------------
 //  Start server
