@@ -124,8 +124,7 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
         }
 
         // Always fetch fresh orders (including on refresh)
-        const ordersUrl = `${API_BASE_URL}/api/orders/user/${currentUser.id}?timestamp=${Date.now()}`;
-        console.log('🔄 Fetching fresh orders from:', ordersUrl);
+        const ordersUrl = `${API_BASE_URL}/api/users/${currentUser.id}/orders?timestamp=${Date.now()}`;        console.log('🔄 Fetching fresh orders from:', ordersUrl);
         
         const ordersRes = await fetch(ordersUrl, {
           cache: 'no-cache', // Force fresh data

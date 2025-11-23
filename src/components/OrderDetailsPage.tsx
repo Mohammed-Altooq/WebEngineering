@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 interface OrderItem {
   productId: string;
@@ -26,6 +26,7 @@ interface Order {
   items: OrderItem[];
   customerName: string;
   shippingAddress?: string;
+  paymentMethod?: string;
 }
 
 interface OrderDetailsPageProps {
@@ -41,32 +42,32 @@ export function OrderDetailsPage({ orderId, currentUser, onNavigate }: OrderDeta
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      Delivered: { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
-      Shipped: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Shipped' },
-      Confirmed: { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Confirmed' },
-      Processing: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Processing' },
-      Pending: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
-      Cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' },
-    } as const;
+      'Delivered': { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
+      'Shipped': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Shipped' },
+      'Confirmed': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Confirmed' },
+      'Processing': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Processing' },
+      'Pending': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
+      'Cancelled': { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' }
+    };
 
-    const config = (statusConfig as any)[status] || statusConfig.Pending;
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.Pending;
     return <Badge className={`${config.bg} ${config.text} border-0`}>{config.label}</Badge>;
   };
 
   const getItemStatusBadge = (status?: string) => {
     if (!status) return null;
     const statusConfig = {
-      Delivered: { bg: 'bg-green-50', text: 'text-green-700', label: 'Delivered' },
-      Shipped: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Shipped' },
-      Processing: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Processing' },
+      'Delivered': { bg: 'bg-green-50', text: 'text-green-700', label: 'Delivered' },
+      'Shipped': { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Shipped' },
+      'Processing': { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Processing' },
       'Ready to Ship': { bg: 'bg-indigo-50', text: 'text-indigo-700', label: 'Ready to Ship' },
       'Being Prepared': { bg: 'bg-purple-50', text: 'text-purple-700', label: 'Being Prepared' },
-      Confirmed: { bg: 'bg-cyan-50', text: 'text-cyan-700', label: 'Confirmed' },
-      Pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Pending' },
-      Cancelled: { bg: 'bg-red-50', text: 'text-red-700', label: 'Cancelled' },
-    } as const;
+      'Confirmed': { bg: 'bg-cyan-50', text: 'text-cyan-700', label: 'Confirmed' },
+      'Pending': { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Pending' },
+      'Cancelled': { bg: 'bg-red-50', text: 'text-red-700', label: 'Cancelled' }
+    };
 
-    const config = (statusConfig as any)[status] || statusConfig.Pending;
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.Pending;
     return (
       <Badge variant="outline" className={`${config.bg} ${config.text} border-current text-xs`}>
         {config.label}
@@ -86,33 +87,62 @@ export function OrderDetailsPage({ orderId, currentUser, onNavigate }: OrderDeta
         setLoading(true);
         setError(null);
 
-        // 1) Try direct /api/orders/:id
-        let orderData: Order | null = null;
+        console.log('🔄 Loading order details for:', orderId);
+        console.log('Current user:', currentUser.id);
 
-        try {
-          const directRes = await fetch(`${API_BASE_URL}/api/orders/${orderId}`);
-          if (directRes.ok) {
-            orderData = await directRes.json();
-          }
-        } catch {
-          // ignore, fallback below
+        // Load all user orders and find this specific one
+        const userOrdersRes = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/orders`);
+        
+        console.log('Orders response status:', userOrdersRes.status);
+        
+        if (!userOrdersRes.ok) {
+          throw new Error(`Failed to load orders: ${userOrdersRes.status}`);
         }
-
-        // 2) Fallback: load all user orders and find this one
-        if (!orderData) {
-          const userOrdersRes = await fetch(`${API_BASE_URL}/api/orders/user/${currentUser.id}`);
-          if (!userOrdersRes.ok) {
-            throw new Error('Failed to load orders');
-          }
-          const allOrders = await userOrdersRes.json();
-          const found = allOrders.find((o: any) => o.id === orderId);
-          if (!found) {
-            throw new Error('Order not found');
-          }
-          orderData = found;
+        
+        const allOrders = await userOrdersRes.json();
+        console.log('All orders loaded:', allOrders.length);
+        
+        const found = allOrders.find((o: any) => o.id === orderId);
+        
+        if (!found) {
+          console.log('Available order IDs:', allOrders.map((o: any) => o.id));
+          throw new Error(`Order ${orderId} not found`);
         }
+        
+        console.log('✅ Order found:', found);
 
-        setOrder(orderData);
+        // Process order items to add seller names
+        const processedItems = await Promise.all(
+          found.items.map(async (item: any) => {
+            let sellerName = item.sellerName || 'Unknown Seller';
+            
+            try {
+              // Fetch product details to get seller info if missing
+              if (!sellerName || sellerName === 'Unknown Seller') {
+                const productRes = await fetch(`${API_BASE_URL}/api/products/${item.productId}`);
+                if (productRes.ok) {
+                  const product = await productRes.json();
+                  sellerName = product.sellerName || 'Unknown Seller';
+                }
+              }
+            } catch (err) {
+              console.warn('Failed to fetch seller for product:', item.productId);
+            }
+            
+            return {
+              ...item,
+              sellerName
+            };
+          })
+        );
+
+        const processedOrder = {
+          ...found,
+          items: processedItems
+        };
+        
+        setOrder(processedOrder);
+        
       } catch (err: any) {
         console.error('Error loading order details:', err);
         setError(err.message || 'Failed to load order details');
@@ -157,8 +187,15 @@ export function OrderDetailsPage({ orderId, currentUser, onNavigate }: OrderDeta
             Back to Orders
           </Button>
           <Card className="p-6 bg-white border border-border">
-            <p className="text-red-600 mb-2">Failed to load order.</p>
+            <p className="text-red-600 mb-2">Failed to load order details.</p>
             {error && <p className="text-sm text-red-500">{error}</p>}
+            <Button 
+              onClick={() => onNavigate('customer-profile')} 
+              className="mt-4"
+              variant="outline"
+            >
+              Return to Orders
+            </Button>
           </Card>
         </div>
       </div>
@@ -206,27 +243,36 @@ export function OrderDetailsPage({ orderId, currentUser, onNavigate }: OrderDeta
             </div>
           </div>
 
-          {/* Shipping */}
+          {/* Shipping Address */}
           {order.shippingAddress && (
             <div className="mb-6 bg-gray-50 p-4 rounded-lg flex gap-3">
               <MapPin className="w-5 h-5 mt-0.5 text-primary" />
               <div>
                 <p className="text-sm font-medium mb-1">Shipping Address</p>
-                <p className="text-sm text-foreground/70 whitespace-pre-line">
+                <p className="text-sm text-foreground/70">
                   {order.shippingAddress}
                 </p>
               </div>
             </div>
           )}
 
-          <Separator className="my-4" />
+          {/* Payment Method */}
+          {order.paymentMethod && (
+            <div className="mb-6 bg-blue-50 p-4 rounded-lg">
+              <p className="text-sm font-medium mb-1">Payment Method</p>
+              <p className="text-sm text-foreground/70">{order.paymentMethod}</p>
+            </div>
+          )}
+
+          <Separator className="my-6" />
 
           {/* Items */}
-          <div className="space-y-3 mb-6">
+          <div className="space-y-4 mb-6">
+            <h3 className="font-['Lato'] text-lg">Order Items</h3>
             {order.items.map((item, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -234,14 +280,18 @@ export function OrderDetailsPage({ orderId, currentUser, onNavigate }: OrderDeta
                     {getItemStatusBadge(item.itemStatus)}
                   </div>
                   {item.sellerName && (
-                    <p className="text-xs text-foreground/70">
+                    <p className="text-sm text-foreground/70">
                       Sold by <span className="font-medium">{item.sellerName}</span>
                     </p>
                   )}
+                  <p className="text-xs text-foreground/60 mt-1">
+                    Product ID: {item.productId}
+                  </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm">Qty: {item.quantity}</p>
-                  <p className="font-medium">
+                  <p className="text-sm text-foreground/70">Qty: {item.quantity}</p>
+                  <p className="font-medium">BD {item.price.toFixed(3)} each</p>
+                  <p className="font-bold text-primary">
                     BD {(item.price * item.quantity).toFixed(3)}
                   </p>
                 </div>
@@ -249,13 +299,44 @@ export function OrderDetailsPage({ orderId, currentUser, onNavigate }: OrderDeta
             ))}
           </div>
 
-          {/* Summary */}
-          <Separator className="my-4" />
-          <div className="flex justify-between items-center">
-            <p className="font-medium">Order Total</p>
-            <p className="font-['Poppins'] text-xl text-primary">
-              BD {order.total.toFixed(3)}
-            </p>
+          {/* Order Summary */}
+          <Separator className="my-6" />
+          
+          <div className="space-y-3">
+            <div className="flex justify-between items-center text-sm">
+              <span>Subtotal ({order.items.length} items)</span>
+              <span>BD {(order.total - 3.5).toFixed(3)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span>Shipping</span>
+              <span>BD 3.500</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between items-center font-bold text-lg">
+              <span>Total</span>
+              <span className="text-primary">BD {order.total.toFixed(3)}</span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="mt-8 flex gap-4">
+            <Button 
+              onClick={() => onNavigate('customer-profile')}
+              className="bg-primary hover:bg-primary/90"
+            >
+              Back to All Orders
+            </Button>
+            {order.status === 'Delivered' && (
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  // TODO: Implement review functionality
+                  alert('Review functionality coming soon!');
+                }}
+              >
+                Write a Review
+              </Button>
+            )}
           </div>
         </Card>
       </div>
