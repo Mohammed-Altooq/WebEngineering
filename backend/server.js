@@ -746,7 +746,7 @@ app.get("/api/sellers/:sellerId/orders", async (req, res) => {
   }
 });
 
-// Update order status
+// Update order status - ENHANCED with item cancellation
 app.patch("/api/orders/:orderId/status", async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -757,15 +757,26 @@ app.patch("/api/orders/:orderId/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid status" });
     }
     
-    const updatedOrder = await Order.findOneAndUpdate(
-      { id: orderId },
-      { status },
-      { new: true }
-    ).lean();
+    const order = await Order.findOne({ id: orderId });
     
-    if (!updatedOrder) {
+    if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
+    
+    // Update order status
+    order.status = status;
+    
+    // If order is being cancelled, update all item statuses to cancelled
+    if (status === 'Cancelled') {
+      console.log(`🚫 Cancelling order ${orderId} - updating all item statuses to Cancelled`);
+      order.items = order.items.map(item => ({
+        ...item,
+        itemStatus: 'Cancelled'
+      }));
+    }
+    
+    const updatedOrder = await order.save();
+    console.log(`✅ Order ${orderId} updated to ${status}${status === 'Cancelled' ? ' with all items cancelled' : ''}`);
     
     res.json(updatedOrder);
   } catch (err) {
@@ -1065,7 +1076,7 @@ app.delete("/api/users/:userId/cart", async (req, res) => {
 // -------------------
 //  Start server
 // -------------------
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
 app.listen(port, () => {
   console.log(`🚀 Server running on http://localhost:${port}`);
 });

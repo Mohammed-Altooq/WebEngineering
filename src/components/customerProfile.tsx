@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Star, MapPin, Mail, Phone, Package, User, Edit, Save, X, ArrowLeft, Calendar, Truck } from 'lucide-react';
+import { Star, MapPin, Mail, Phone, Package, User, Edit, Save, X, ArrowLeft, Calendar, Truck, XCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
@@ -10,13 +10,12 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 interface CustomerProfileProps {
   currentUser?: { id: string; name: string; role: 'customer' | 'seller'; email: string } | null;
   onNavigate: (page: string, idOrParam?: string) => void;
 }
-
 
 interface Order {
   id: string;
@@ -56,6 +55,7 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0); // Force refresh when needed
+  const [cancellingOrder, setCancellingOrder] = useState<string | null>(null);
   
   const [profileData, setProfileData] = useState<UserProfile>({
     id: currentUser?.id || '',
@@ -72,6 +72,54 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
   const refreshOrders = () => {
     console.log('🔄 Manual refresh triggered...');
     setRefreshKey(prev => prev + 1);
+  };
+
+  // Function to cancel an order
+  const cancelOrder = async (orderId: string) => {
+    if (!currentUser?.id || !window.confirm('Are you sure you want to cancel this order?')) return;
+    
+    try {
+      setCancellingOrder(orderId);
+      
+      console.log('🚫 Cancelling order:', orderId);
+      
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'Cancelled' })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Cancel order failed:', response.status, errorText);
+        throw new Error('Failed to cancel order');
+      }
+
+      // Update local state immediately
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId 
+            ? { ...order, status: 'Cancelled' }
+            : order
+        )
+      );
+
+      console.log('✅ Order cancelled successfully');
+      
+    } catch (err) {
+      console.error('❌ Error cancelling order:', err);
+      setError('Failed to cancel order. Please try again.');
+    } finally {
+      setCancellingOrder(null);
+    }
+  };
+
+  // Check if order can be cancelled
+  const canCancelOrder = (order: Order) => {
+    const cancellableStatuses = ['Pending', 'Confirmed'];
+    return cancellableStatuses.includes(order.status);
   };
 
   // Load user profile and orders from database
@@ -124,7 +172,8 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
         }
 
         // Always fetch fresh orders (including on refresh)
-        const ordersUrl = `${API_BASE_URL}/api/users/${currentUser.id}/orders?timestamp=${Date.now()}`;        console.log('🔄 Fetching fresh orders from:', ordersUrl);
+        const ordersUrl = `${API_BASE_URL}/api/users/${currentUser.id}/orders?timestamp=${Date.now()}`;
+        console.log('🔄 Fetching fresh orders from:', ordersUrl);
         
         const ordersRes = await fetch(ordersUrl, {
           cache: 'no-cache', // Force fresh data
@@ -730,20 +779,40 @@ export function CustomerProfile({ currentUser, onNavigate }: CustomerProfileProp
                     </div>
 
                     <div className="flex justify-between items-center mt-4">
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={() => onNavigate('order-details', order.id)}
-  >
-    View Details
-  </Button>
-  {order.status === 'Delivered' && (
-    <Button variant="ghost" size="sm">
-      <Star className="w-4 h-4 mr-1" />
-      Write Review
-    </Button>
-  )}
-</div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onNavigate('order-details', order.id)}
+                        >
+                          View Details
+                        </Button>
+                        {canCancelOrder(order) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => cancelOrder(order.id)}
+                            disabled={cancellingOrder === order.id}
+                            className="text-red-600 hover:text-red-800 hover:border-red-300"
+                          >
+                            {cancellingOrder === order.id ? (
+                              'Cancelling...'
+                            ) : (
+                              <>
+                                <XCircle className="w-4 h-4 mr-1" />
+                                Cancel Order
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                      {order.status === 'Delivered' && (
+                        <Button variant="ghost" size="sm">
+                          <Star className="w-4 h-4 mr-1" />
+                          Write Review
+                        </Button>
+                      )}
+                    </div>
 
                   </Card>
                 ))}
